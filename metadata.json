@@ -1,0 +1,6 @@
+{
+  "name": "STOBOOK — Онлайн-запись в СТО",
+  "description": "Найдите СТО рядом и запишитесь на свободное время онлайн в Новосибирске без звонков. Реальный расчёт свободных слотов, автосервисы, история обслуживания.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: #F6F7F8;
+    --bg-dark: #111315;
+    --bg-card: #FFFFFF;
+    --bg-secondary: #ECEFF1;
+    --accent-lime: #B8F23A;
+    --accent-dark: #1B1E20;
+    --success: #35B86B;
+    --warning: #F2B84B;
+    --error: #E55353;
+    --text-primary: #111315;
+    --text-secondary: #70777D;
+    --border-color: #E1E4E6;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #F6F7F8;
+    color: #111315;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Clean active state helper for lime buttons */
+.btn-lime {
+  background-color: #B8F23A;
+  color: #111315;
+  font-weight: 700;
+  transition: all 0.15s ease-in-out;
+}
+
+.btn-lime:hover {
+  background-color: #a8e82a;
+}
+
+.btn-lime:active {
+  transform: scale(0.98);
+}

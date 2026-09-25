@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "STOBOOK — Онлайн-запись в СТО",
+  "short_name": "STOBOOK",
+  "description": "Мгновенная онлайн-запись в автосервисы Новосибирска с расчётом реальных слотов",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["auto", "utilities", "productivity"]
+}

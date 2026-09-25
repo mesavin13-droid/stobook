@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>STOBOOK — Онлайн-запись в СТО</title>
+    <meta name="description" content="Найдите СТО рядом и запишитесь на свободное время онлайн в Новосибирске без звонков. Реальный расчёт свободных слотов, автосервисы, история обслуживания." />
+    
+    <!-- OpenGraph Tags -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="STOBOOK — Онлайн-запись в СТО" />
+    <meta property="og:description" content="Найдите СТО рядом и запишитесь на свободное время онлайн в Новосибирске без звонков. Реальный расчёт свободных слотов, автосервисы, история обслуживания." />
+    <meta property="og:site_name" content="STOBOOK" />
+
+    <!-- Twitter Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="STOBOOK — Онлайн-запись в СТО" />
+    <meta name="twitter:description" content="Найдите СТО рядом и запишитесь на свободное время онлайн в Новосибирске без звонков." />
+
+    <!-- PWA meta tags -->
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="STOBOOK" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Telegram WebApp SDK (async and non-blocking) -->
+    <script async defer src="https://telegram.org/js/telegram-web-app.js" onerror="window.__tg_unsupported=true;"></script>
+
+    <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Schema.org JSON-LD -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "STOBOOK",
+      "applicationCategory": "AutomotiveApplication",
+      "operatingSystem": "All",
+      "description": "Платформа мгновенной онлайн-записи в автосервисы Новосибирска на основе реальной доступности постов и мастеров.",
+      "areaServed": "Новосибирск"
+    }
+    </script>
+  </head>
+  <body class="bg-slate-50 text-slate-900 antialiased font-sans selection:bg-amber-500/20 selection:text-amber-900 min-h-screen">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
