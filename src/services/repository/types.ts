@@ -135,6 +135,12 @@ export interface Repository {
   ): Promise<void>;
   countProfiles(): Promise<number>;
 
+  // Role management. Both operations are server side only: they are the reason a
+  // customer can become a service owner, and the reason the platform
+  // administrator allowlist stays in sync.
+  promoteToServiceOwner(profileId: string): Promise<Profile | null>;
+  syncSuperAdmin(telegramId: number, shouldBeAdmin: boolean): Promise<Profile | null>;
+
   listServiceCenters(): Promise<ServiceCenter[]>;
   getServiceCenter(id: string): Promise<ServiceCenter | null>;
   getServiceCenterOwnerId(id: string): Promise<string | null>;

@@ -129,6 +129,24 @@ export const ScreenProfile: React.FC<ScreenProfileProps> = ({
           </button>
         )}
 
+        {profile?.role === 'CUSTOMER' && (
+          <button
+            onClick={onSwitchToOwnerCabinet}
+            className="w-full p-4 rounded-[18px] bg-white border border-[#E1E4E6] hover:border-[#111315] transition-colors flex items-center justify-between shadow-xs"
+          >
+            <div className="flex items-center gap-3 text-left">
+              <div className="w-10 h-10 rounded-[12px] bg-[#ECEFF1] flex items-center justify-center text-[#111315]">
+                <Wrench className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-[#111315]">Стать владельцем СТО</p>
+                <p className="text-[11px] text-[#70777D]">Разместить свой сервис и принимать записи</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#70777D]" />
+          </button>
+        )}
+
         {profile?.role === 'SUPER_ADMIN' && (
           <button
             onClick={onSwitchToAdmin}

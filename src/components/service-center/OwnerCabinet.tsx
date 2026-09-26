@@ -3,12 +3,15 @@ import { Appointment, ServiceCenter, Master, ServiceBay, AppointmentStatus } fro
 import { Wrench, Calendar, Users, Clock, CheckCircle, Car, AlertCircle, Plus, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../lib/telegram/webapp';
 
+type OwnerCabinetTab = 'dashboard' | 'appointments' | 'bays_masters' | 'register';
+
 interface OwnerCabinetProps {
   onBackToCustomer: () => void;
+  initialTab?: OwnerCabinetTab;
 }
 
-export const OwnerCabinet: React.FC<OwnerCabinetProps> = ({ onBackToCustomer }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'appointments' | 'bays_masters' | 'register'>('dashboard');
+export const OwnerCabinet: React.FC<OwnerCabinetProps> = ({ onBackToCustomer, initialTab = 'dashboard' }) => {
+  const [activeTab, setActiveTab] = useState<OwnerCabinetTab>(initialTab);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [serviceCenter, setServiceCenter] = useState<ServiceCenter | null>(null);

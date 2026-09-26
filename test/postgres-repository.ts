@@ -622,6 +622,91 @@ async function testReminderCron() {
   );
 }
 
+async function testRoleManagement() {
+  console.log('\n--- ROLE MANAGEMENT ---');
+
+  const ownerRow = {
+    id: OWNER,
+    role: 'SERVICE_OWNER',
+    full_name: 'Владелец',
+    phone: null,
+    avatar_url: null,
+    created_at: new Date().toISOString()
+  };
+
+  const registerDatabase = new FakeDatabase(
+    baseHandlers([
+      [/promote_to_service_owner/, () => ({ rows: [ownerRow] })],
+      [/INSERT INTO service_centers/, () => ({ rows: [{ id: CENTER }] })],
+      [/INSERT INTO service_center_services/, () => ({ rows: [{ id: SERVICE }] })],
+      [/SELECT \(SELECT json_agg/, () => ({ rows: [{ bay_ids: [], master_ids: [] }] })],
+      [/FROM service_centers sc/, () => ({ rows: [{ ...CENTER_ROW, id: CENTER }] })]
+    ])
+  );
+  await repositoryFor(registerDatabase).registerServiceCenter({
+    ownerId: OWNER,
+    cityId: 'c1111111-1111-1111-1111-111111111111',
+    name: 'Top Motors',
+    address: 'ул. Тестовая, 1',
+    latitude: 55,
+    longitude: 82.9,
+    phone: '+7 (383) 000-00-00',
+    rating: 5,
+    reviews_count: 0,
+    status: 'PENDING',
+    trialStartedAt: new Date().toISOString(),
+    trialEndsAt: new Date().toISOString(),
+    photos: [],
+    baysCount: 1,
+    mastersCount: 1
+  });
+
+  const promotion = registerDatabase.find(/promote_to_service_owner/);
+  check('registering a center promotes the owner in the same transaction', promotion !== undefined);
+  check(
+    'promotion runs before the center is inserted',
+    promotion !== undefined &&
+      registerDatabase.queries.findIndex((query) => /promote_to_service_owner/.test(query.sql)) <
+        registerDatabase.queries.findIndex((query) => /INSERT INTO service_centers/.test(query.sql))
+  );
+  check(
+    'promotion targets the registering owner',
+    promotion !== undefined && promotion.params[0] === OWNER,
+    JSON.stringify(promotion?.params)
+  );
+
+  const promoteDatabase = new FakeDatabase([[/promote_to_service_owner/, () => ({ rows: [ownerRow] })]]);
+  const promoted = await repositoryFor(promoteDatabase).promoteToServiceOwner(OWNER);
+  check('promotion returns the updated profile', promoted?.role === 'SERVICE_OWNER', String(promoted?.role));
+
+  const emptyDatabase = new FakeDatabase([[/promote_to_service_owner/, () => ({ rows: [] })]]);
+  const missing = await repositoryFor(emptyDatabase).promoteToServiceOwner(OWNER);
+  check('promotion of a missing profile returns null', missing === null);
+
+  const adminDatabase = new FakeDatabase([
+    [/sync_super_admin/, () => ({ rows: [{ ...ownerRow, role: 'SUPER_ADMIN' }] })]
+  ]);
+  const synced = await repositoryFor(adminDatabase).syncSuperAdmin(777000111, true);
+  check('allowlisted telegram account becomes super admin', synced?.role === 'SUPER_ADMIN', String(synced?.role));
+
+  const syncQuery = adminDatabase.find(/sync_super_admin/);
+  check(
+    'allowlist sync passes the telegram id and the flag',
+    syncQuery !== undefined && syncQuery.params[0] === 777000111 && syncQuery.params[1] === true,
+    JSON.stringify(syncQuery?.params)
+  );
+  check(
+    'allowlist sync runs with the trusted server context',
+    adminDatabase.find(/stobook\.server_context/) !== undefined
+  );
+
+  const demoteDatabase = new FakeDatabase([
+    [/sync_super_admin/, () => ({ rows: [{ ...ownerRow, role: 'CUSTOMER' }] })]
+  ]);
+  const demoted = await repositoryFor(demoteDatabase).syncSuperAdmin(777000111, false);
+  check('removed account is demoted', demoted?.role === 'CUSTOMER', String(demoted?.role));
+}
+
 async function main() {
   console.log('STOBOOK PostgreSQL repository tests (mocked pool)');
   await testBooking();
@@ -629,6 +714,7 @@ async function main() {
   await testCompleteService();
   await testMappingAndModeration();
   await testReminderCron();
+  await testRoleManagement();
 
   console.log('\n========================================');
   console.log(`PASSED: ${passed}`);

@@ -515,6 +515,25 @@ export class PostgresRepository implements Repository {
     return toNumber(rows[0]?.total);
   }
 
+  async promoteToServiceOwner(profileId: string): Promise<Profile | null> {
+    const rows = await this.run(profileId, true, async (client) => {
+      const result = await client.query('SELECT * FROM public.promote_to_service_owner($1)', [profileId]);
+      return result.rows;
+    });
+    return rows[0]?.id ? mapProfile(rows[0]) : null;
+  }
+
+  async syncSuperAdmin(telegramId: number, shouldBeAdmin: boolean): Promise<Profile | null> {
+    const rows = await this.run(undefined, true, async (client) => {
+      const result = await client.query('SELECT * FROM public.sync_super_admin($1, $2)', [
+        telegramId,
+        shouldBeAdmin
+      ]);
+      return result.rows;
+    });
+    return rows[0]?.id ? mapProfile(rows[0]) : null;
+  }
+
   async listServiceCenters(): Promise<ServiceCenter[]> {
     const { rows } = await this.pool.query(
       `SELECT sc.*,
@@ -639,6 +658,10 @@ export class PostgresRepository implements Repository {
 
   async registerServiceCenter(input: RegisterServiceCenterInput): Promise<ServiceCenter> {
     const centerId = await this.run(input.ownerId, true, async (client) => {
+      // Registering a center is what turns a customer into a service owner, so
+      // the promotion has to be part of the same transaction.
+      await client.query('SELECT public.promote_to_service_owner($1)', [input.ownerId]);
+
       const { rows } = await client.query(
         `INSERT INTO service_centers (
             owner_id, city_id, name, description, address, latitude, longitude, phone, telegram, website,

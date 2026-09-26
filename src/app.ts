@@ -234,6 +234,13 @@ export function createApp({ repository, env }: AppDependencies): Express {
         return;
       }
 
+      if (telegramId !== undefined && env.adminTelegramIds.length > 0) {
+        const synced = await repository.syncSuperAdmin(telegramId, env.adminTelegramIds.includes(telegramId));
+        if (synced) {
+          profile = synced;
+        }
+      }
+
       if (account) {
         await repository.updateTelegramAccount(account.id, {
           first_name: telegramUser?.first_name,
@@ -714,7 +721,6 @@ export function createApp({ repository, env }: AppDependencies): Express {
   app.post(
     '/api/service-centers/register',
     requireAuth,
-    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
     wrap(async (req, res) => {
       const parse = serviceCenterRegisterSchema.safeParse(req.body);
       if (!parse.success) {
@@ -725,9 +731,10 @@ export function createApp({ repository, env }: AppDependencies): Express {
       const settings = await repository.getPlatformSettings();
       const now = new Date();
       const trialEnds = new Date(now.getTime() + (settings.trial_days || 14) * 24 * 60 * 60 * 1000);
+      const ownerId = getRequestAuth(req).profile.id;
 
       const center = await repository.registerServiceCenter({
-        ownerId: getRequestAuth(req).profile.id,
+        ownerId,
         cityId: 'c1111111-1111-1111-1111-111111111111',
         name: parse.data.name,
         description: parse.data.description,
@@ -749,7 +756,11 @@ export function createApp({ repository, env }: AppDependencies): Express {
         mastersCount: parse.data.mastersCount
       });
 
-      res.status(201).json(center);
+      // The owner profile is promoted inside the registration transaction, so
+      // the client can immediately switch to the owner cabinet.
+      const profile = await repository.promoteToServiceOwner(ownerId);
+
+      res.status(201).json({ success: true, center, profile });
     })
   );
 

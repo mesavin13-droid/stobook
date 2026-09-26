@@ -12,6 +12,7 @@ export interface AppEnv {
   databaseMode: DatabaseMode;
   databaseUrl: string | null;
   cronSecret: string | null;
+  adminTelegramIds: number[];
 }
 
 export class EnvironmentError extends Error {
@@ -139,6 +140,27 @@ function readCronSecret(source: EnvSource, isProduction: boolean, problems: stri
   return raw;
 }
 
+// Telegram accounts that hold the SUPER_ADMIN role. The list is synchronised on
+// every login: a listed account is promoted, a removed one is demoted back to
+// service owner or customer. While the variable is empty nobody is touched, so a
+// misconfigured deployment cannot lock the platform out.
+function readAdminTelegramIds(source: EnvSource, problems: string[]): number[] {
+  const raw = source.ADMIN_TELEGRAM_IDS?.trim();
+  if (!raw) return [];
+
+  const ids: number[] = [];
+  for (const part of raw.split(/[\s,;]+/)) {
+    if (!part) continue;
+    const parsed = Number(part);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+      problems.push(`ADMIN_TELEGRAM_IDS содержит некорректный Telegram id "${part}"`);
+      continue;
+    }
+    if (!ids.includes(parsed)) ids.push(parsed);
+  }
+  return ids;
+}
+
 export function loadEnv(source: EnvSource = process.env): AppEnv {
   const isProduction = source.NODE_ENV === 'production';
   const problems: string[] = [];
@@ -152,7 +174,8 @@ export function loadEnv(source: EnvSource = process.env): AppEnv {
     sessionSecret: readSessionSecret(source, isProduction, problems),
     telegramBotToken: readTelegramBotToken(source, isProduction, problems),
     ...readDatabase(source, isProduction, problems),
-    cronSecret: readCronSecret(source, isProduction, problems)
+    cronSecret: readCronSecret(source, isProduction, problems),
+    adminTelegramIds: readAdminTelegramIds(source, problems)
   };
 
   if (problems.length > 0) {

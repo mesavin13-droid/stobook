@@ -111,6 +111,28 @@ export class MemoryRepository implements Repository {
     return store.profiles.length;
   }
 
+  async promoteToServiceOwner(profileId: string): Promise<Profile | null> {
+    const profile = store.profiles.find((item) => item.id === profileId);
+    if (!profile) return null;
+    if (profile.role === 'CUSTOMER') profile.role = 'SERVICE_OWNER';
+    return profile;
+  }
+
+  async syncSuperAdmin(telegramId: number, shouldBeAdmin: boolean): Promise<Profile | null> {
+    const account = store.telegramAccounts.find((item) => item.telegram_id === telegramId);
+    if (!account) return null;
+    const profile = store.profiles.find((item) => item.id === account.user_id);
+    if (!profile) return null;
+
+    if (shouldBeAdmin) {
+      profile.role = 'SUPER_ADMIN';
+    } else if (profile.role === 'SUPER_ADMIN') {
+      const ownsCenter = store.serviceCenters.some((center) => center.owner_id === profile.id);
+      profile.role = ownsCenter ? 'SERVICE_OWNER' : 'CUSTOMER';
+    }
+    return profile;
+  }
+
   async listServiceCenters(): Promise<ServiceCenter[]> {
     return store.serviceCenters;
   }
@@ -175,6 +197,7 @@ export class MemoryRepository implements Repository {
 
   async registerServiceCenter(input: RegisterServiceCenterInput): Promise<ServiceCenter> {
     const now = new Date().toISOString();
+    await this.promoteToServiceOwner(input.ownerId);
     const newCenter = {
       id: randomUUID(),
       owner_id: input.ownerId,

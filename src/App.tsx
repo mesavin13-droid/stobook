@@ -21,6 +21,7 @@ import { ScreenCarProfile } from './components/screens/ScreenCarProfile';
 import { ScreenOwnerDashboard } from './components/screens/ScreenOwnerDashboard';
 import { ScreenOwnerSchedule } from './components/screens/ScreenOwnerSchedule';
 import { ScreenOwnerSettings } from './components/screens/ScreenOwnerSettings';
+import { ScreenOwnerRegister } from './components/screens/ScreenOwnerRegister';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 
 export type ScreenId =
@@ -42,6 +43,7 @@ export type ScreenId =
   | 'owner_dashboard'
   | 'owner_schedule'
   | 'owner_settings'
+  | 'owner_register'
   | 'admin_dashboard';
 
 export default function App() {
@@ -406,10 +408,14 @@ export default function App() {
               if (requireAuthentication()) setCurrentScreen('add_car');
             }}
             onSwitchToOwnerCabinet={() => {
-              if (profile && ['SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'].includes(profile.role)) {
+              if (!profile) {
+                setCurrentScreen('auth');
+                return;
+              }
+              if (['SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'].includes(profile.role)) {
                 setCurrentScreen('owner_dashboard');
               } else {
-                setCurrentScreen('auth');
+                setCurrentScreen('owner_register');
               }
             }}
             onSwitchToAdmin={() => {
@@ -435,6 +441,17 @@ export default function App() {
             onBackToCustomer={() => setCurrentScreen('profile')}
             onOpenSchedule={() => setCurrentScreen('owner_schedule')}
             onOpenSettings={() => setCurrentScreen('owner_settings')}
+          />
+        );
+
+      case 'owner_register':
+        return (
+          <ScreenOwnerRegister
+            onBack={() => setCurrentScreen('profile')}
+            onRegistered={(updated) => {
+              setProfile(updated);
+              setCurrentScreen('profile');
+            }}
           />
         );
 

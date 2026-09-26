@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { createSessionToken } from '../src/lib/session';
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:3000';
@@ -23,6 +24,30 @@ function check(name: string, condition: boolean, detail = '') {
 
 function cookieHeader(token: string) {
   return `stobook_session=${token}`;
+}
+
+// Signs a Telegram Mini App payload the same way the Telegram client does, so
+// the real /api/telegram/verify path can be exercised end to end.
+function buildInitData(botToken: string, user: { id: number; first_name: string; username?: string }) {
+  const params = new URLSearchParams();
+  params.set('auth_date', String(Math.floor(Date.now() / 1000)));
+  params.set('query_id', 'AAHdF6IQAAAAAN0XohDhrOrc');
+  params.set('user', JSON.stringify(user));
+  const dataCheckString = Array.from(params.keys())
+    .sort()
+    .map((key) => `${key}=${params.get(key)}`)
+    .join('\n');
+  const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest();
+  params.set('hash', createHmac('sha256', secretKey).update(dataCheckString).digest('hex'));
+  return params.toString();
+}
+
+function sessionFrom(res: { setCookie: string[] }): string | null {
+  for (const cookie of res.setCookie) {
+    const match = cookie.match(/stobook_session=([^;]+)/);
+    if (match) return decodeURIComponent(match[1]);
+  }
+  return null;
 }
 
 async function api(path: string, options: { method?: string; token?: string; body?: unknown; origin?: string } = {}) {
@@ -216,6 +241,124 @@ async function main() {
 
   const customerSettings = await api(`/api/vehicles/${VEHICLE}/settings`, { method: 'PATCH', token: customerToken, body: { store_history: true, allow_service_view: true } });
   check('customer can change own privacy settings', customerSettings.status === 200, `got ${customerSettings.status}`);
+
+  console.log('\n--- ROLE ONBOARDING ---');
+  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const adminIds = (process.env.ADMIN_TELEGRAM_IDS || '')
+    .split(/[\s,;]+/)
+    .map((part) => Number(part))
+    .filter((value) => Number.isSafeInteger(value) && value > 0);
+
+  if (!botToken) {
+    console.log('  SKIP: set TELEGRAM_BOT_TOKEN to exercise Telegram login and the admin allowlist');
+  } else {
+    const stamp = Date.now();
+    const plainTelegramId = 555000100 + (stamp % 900);
+
+    const plainLogin = await api('/api/telegram/verify', {
+      method: 'POST',
+      body: { initData: buildInitData(botToken, { id: plainTelegramId, first_name: 'Новый', username: 'new_owner' }) }
+    });
+    check(
+      'telegram login creates a customer profile',
+      plainLogin.status === 200 && plainLogin.json?.profile?.role === 'CUSTOMER',
+      `got ${plainLogin.status} ${JSON.stringify(plainLogin.json)?.slice(0, 120)}`
+    );
+
+    const plainToken = sessionFrom(plainLogin);
+    const promoted = await api('/api/service-centers/register', {
+      method: 'POST',
+      token: plainToken ?? undefined,
+      body: {
+        name: `Новый сервис ${stamp}`,
+        description: 'Автосервис полного цикла, диагностика и ремонт ходовой части',
+        address: 'ул. Тестовая, 15',
+        latitude: 55.01,
+        longitude: 82.93,
+        phone: '+7 (383) 111-22-33',
+        baysCount: 2,
+        mastersCount: 2
+      }
+    });
+    check(
+      'customer can register a service center',
+      promoted.status === 201,
+      `got ${promoted.status} ${JSON.stringify(promoted.json)?.slice(0, 120)}`
+    );
+    check(
+      'registering a center promotes the customer to service owner',
+      promoted.json?.profile?.role === 'SERVICE_OWNER',
+      `got ${promoted.json?.profile?.role}`
+    );
+    check(
+      'new center waits for moderation',
+      promoted.json?.center?.status === 'PENDING',
+      `got ${promoted.json?.center?.status}`
+    );
+
+    if (plainToken) {
+      const afterRegister = await api('/api/auth/me', { token: plainToken });
+      check(
+        'session reflects the owner role after registration',
+        afterRegister.status === 200 && afterRegister.json?.profile?.role === 'SERVICE_OWNER',
+        `got ${afterRegister.json?.profile?.role}`
+      );
+
+      const newOwnerAdminAttempt = await api('/api/admin/metrics', { token: plainToken });
+      check(
+        'promoted owner still has no admin access',
+        newOwnerAdminAttempt.status === 403,
+        `got ${newOwnerAdminAttempt.status}`
+      );
+    }
+
+    const anonRegister = await api('/api/service-centers/register', {
+      method: 'POST',
+      body: {
+        name: 'Анонимный сервис',
+        description: 'Попытка регистрации без авторизации',
+        address: 'ул. Без входа, 1',
+        latitude: 55.01,
+        longitude: 82.93,
+        phone: '+7 (383) 000-00-01',
+        baysCount: 1,
+        mastersCount: 1
+      }
+    });
+    check('anonymous center registration is 401', anonRegister.status === 401, `got ${anonRegister.status}`);
+
+    if (adminIds.length === 0) {
+      console.log('  SKIP: set ADMIN_TELEGRAM_IDS to exercise the administrator allowlist');
+    } else {
+      const listedLogin = await api('/api/telegram/verify', {
+        method: 'POST',
+        body: { initData: buildInitData(botToken, { id: adminIds[0], first_name: 'Админ', username: 'stobook_admin' }) }
+      });
+      check(
+        'listed telegram account becomes super admin on login',
+        listedLogin.status === 200 && listedLogin.json?.profile?.role === 'SUPER_ADMIN',
+        `got ${listedLogin.json?.profile?.role}`
+      );
+
+      const adminSession = sessionFrom(listedLogin);
+      if (adminSession) {
+        const listedMetrics = await api('/api/admin/metrics', { token: adminSession });
+        check('super admin reaches platform metrics', listedMetrics.status === 200, `got ${listedMetrics.status}`);
+      }
+
+      if (plainTelegramId !== adminIds[0]) {
+        const unlistedLogin = await api('/api/telegram/verify', {
+          method: 'POST',
+          body: { initData: buildInitData(botToken, { id: plainTelegramId, first_name: 'Новый', username: 'new_owner' }) }
+        });
+        check(
+          'unlisted account keeps its non admin role',
+          unlistedLogin.status === 200 && unlistedLogin.json?.profile?.role !== 'SUPER_ADMIN',
+          `got ${unlistedLogin.json?.profile?.role}`
+        );
+      }
+    }
+  }
 
   console.log('\n--- SUPER ADMIN ---');
   const adminMetrics = await api('/api/admin/metrics', { token: adminToken });
