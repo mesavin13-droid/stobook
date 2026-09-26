@@ -91,7 +91,9 @@ CREATE TABLE IF NOT EXISTS vehicles (
     mileage INTEGER NOT NULL DEFAULT 0,
     photo_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT vehicles_year_check CHECK (year BETWEEN 1900 AND 2100),
+    CONSTRAINT vehicles_mileage_check CHECK (mileage >= 0)
 );
 
 -- 5. Vehicle History Settings (Privacy)
@@ -126,7 +128,12 @@ CREATE TABLE IF NOT EXISTS service_centers (
     trial_started_at TIMESTAMPTZ,
     trial_ends_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT service_centers_rating_check CHECK (rating BETWEEN 0 AND 5),
+    CONSTRAINT service_centers_reviews_count_check CHECK (reviews_count >= 0),
+    CONSTRAINT service_centers_trial_window_check CHECK (
+      trial_ends_at IS NULL OR trial_started_at IS NULL OR trial_ends_at >= trial_started_at
+    )
 );
 
 -- 7. Service Center Photos
@@ -159,7 +166,9 @@ CREATE TABLE IF NOT EXISTS service_center_services (
     is_fixed_price BOOLEAN NOT NULL DEFAULT FALSE,
     duration_minutes INTEGER NOT NULL DEFAULT 60,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT service_center_services_price_check CHECK (price >= 0),
+    CONSTRAINT service_center_services_duration_check CHECK (duration_minutes > 0)
 );
 
 -- 10. Masters (Специалисты)
@@ -246,7 +255,8 @@ CREATE TABLE IF NOT EXISTS appointments (
     reminder_sent_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT valid_duration CHECK (end_at > start_at)
+    CONSTRAINT valid_duration CHECK (end_at > start_at),
+    CONSTRAINT appointments_price_check CHECK (price >= 0)
 );
 
 -- 18. Appointment Status History
@@ -274,7 +284,9 @@ CREATE TABLE IF NOT EXISTS service_history (
     comment TEXT,
     photos JSONB DEFAULT '[]',
     documents JSONB DEFAULT '[]',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT service_history_mileage_check CHECK (mileage >= 0),
+    CONSTRAINT service_history_cost_check CHECK (cost >= 0)
 );
 
 -- 20. Service History Access (Временный доступ СТО к истории)
@@ -286,7 +298,10 @@ CREATE TABLE IF NOT EXISTS service_history_access (
     granted_by_customer BOOLEAN NOT NULL DEFAULT TRUE,
     granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     revoked_at TIMESTAMPTZ,
-    expires_at TIMESTAMPTZ
+    expires_at TIMESTAMPTZ,
+    CONSTRAINT service_history_access_window_check CHECK (
+      expires_at IS NULL OR expires_at > granted_at
+    )
 );
 
 -- 21. Reviews

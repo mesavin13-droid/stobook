@@ -6,20 +6,28 @@ import { Appointment } from '../../types';
 export interface ScreenBookingsListProps {
   onSelectBooking?: (booking: any) => void;
   onNewBookingClick?: () => void;
+  onAuthRequired?: () => void;
 }
 
 export const ScreenBookingsList: React.FC<ScreenBookingsListProps> = ({
   onSelectBooking,
-  onNewBookingClick
+  onNewBookingClick,
+  onAuthRequired
 }) => {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'history'>('upcoming');
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [countdown, setCountdown] = useState({ hours: 2, minutes: 43, seconds: 17 });
+  const [now, setNow] = useState(() => Date.now());
 
   const loadBookings = () => {
-    fetch('/api/bookings')
-      .then((res) => (res.ok ? res.json() : []))
+    fetch('/api/bookings', { credentials: 'same-origin' })
+      .then((res) => {
+        if (res.status === 401) {
+          onAuthRequired?.();
+          return [];
+        }
+        return res.ok ? res.json() : [];
+      })
       .then((data) => {
         setAppointments(data);
         setLoading(false);
@@ -31,35 +39,36 @@ export const ScreenBookingsList: React.FC<ScreenBookingsListProps> = ({
     loadBookings();
   }, []);
 
-  // Live countdown timer for the today visit
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
-        if (prev.minutes > 0) return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
-        if (prev.hours > 0) return { ...prev, hours: prev.hours - 1, minutes: 59, seconds: 59 };
-        return prev;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
-  const formatTimer = () => {
-    const h = String(countdown.hours).padStart(2, '0');
-    const m = String(countdown.minutes).padStart(2, '0');
-    const s = String(countdown.seconds).padStart(2, '0');
-    return `${h}:${m}:${s}`;
+  const nextAppointment = appointments
+    .filter((appointment) => new Date(appointment.start_at).getTime() > now)
+    .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())[0];
+
+  const formatTimer = (startAt?: string) => {
+    if (!startAt) return '--:--:--';
+    const seconds = Math.max(0, Math.floor((new Date(startAt).getTime() - now) / 1000));
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainder = seconds % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
   };
 
   const handleCancel = async (id: string) => {
     if (!confirm('Вы уверены, что хотите отменить эту запись?')) return;
     try {
-      await fetch(`/api/bookings/${id}/status`, {
+      const response = await fetch(`/api/bookings/${id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'CANCELLED', reason: 'Отмена клиентом в приложении' })
+        credentials: 'same-origin',
+        body: JSON.stringify({ status: 'CANCELLED_BY_CUSTOMER', reason: 'Отмена клиентом в приложении' })
       });
-      loadBookings();
+      if (response.ok) {
+        loadBookings();
+      }
     } catch (e) {
       console.error(e);
     }
@@ -67,10 +76,10 @@ export const ScreenBookingsList: React.FC<ScreenBookingsListProps> = ({
 
   // Separate upcoming vs history
   const upcomingList = appointments.filter(
-    (a) => a.status === 'NEW' || a.status === 'CONFIRMED' || a.status === 'IN_PROGRESS'
+    (appointment) => ['NEW', 'CONFIRMED', 'ARRIVED', 'IN_PROGRESS'].includes(appointment.status)
   );
   const historyList = appointments.filter(
-    (a) => a.status === 'COMPLETED' || a.status === 'CANCELLED'
+    (appointment) => ['COMPLETED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_SERVICE', 'NO_SHOW'].includes(appointment.status)
   );
 
   return (
@@ -140,7 +149,9 @@ export const ScreenBookingsList: React.FC<ScreenBookingsListProps> = ({
               const startDate = new Date(app.start_at);
               const formattedDate = startDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
               const formattedTime = startDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-              const isToday = new Date().toDateString() === startDate.toDateString();
+               const isToday = new Date().toDateString() === startDate.toDateString();
+               const isNext = nextAppointment?.id === app.id;
+               const statusText = app.status === 'CONFIRMED' ? 'Подтверждена' : app.status === 'ARRIVED' ? 'Клиент прибыл' : app.status === 'IN_PROGRESS' ? 'В работе' : 'Ожидает СТО';
 
               return (
                 <div
@@ -151,7 +162,7 @@ export const ScreenBookingsList: React.FC<ScreenBookingsListProps> = ({
                   <div className="flex items-start justify-between gap-2 pb-3 border-b border-[#E1E4E6]/60">
                     <div>
                       <div className="flex items-center gap-2">
-                        {isToday && (
+                        {isToday && isNext && (
                           <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-[#35B86B]/15 text-[#35B86B]">
                             Сегодня
                           </span>
@@ -164,15 +175,15 @@ export const ScreenBookingsList: React.FC<ScreenBookingsListProps> = ({
                         <div className="flex items-center gap-1.5 text-xs text-[#70777D] font-mono mt-1">
                           <Clock className="w-3.5 h-3.5 text-[#F2B84B]" />
                           <span>До визита:</span>
-                          <span className="font-bold text-[#111315] font-mono">{formatTimer()}</span>
+                          <span className="font-bold text-[#111315] font-mono">{formatTimer(app.start_at)}</span>
                         </div>
                       )}
                     </div>
 
-                    <StatusBadge
-                      status={app.status === 'CONFIRMED' ? 'confirmed' : 'pending'}
-                      text={app.status === 'CONFIRMED' ? 'Подтверждена' : 'Ожидает СТО'}
-                    />
+                     <StatusBadge
+                       status={app.status === 'CONFIRMED' ? 'confirmed' : app.status === 'IN_PROGRESS' ? 'completed' : 'pending'}
+                       text={statusText}
+                     />
                   </div>
 
                   {/* Service & Details */}

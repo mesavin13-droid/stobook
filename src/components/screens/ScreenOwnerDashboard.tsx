@@ -36,7 +36,7 @@ export const ScreenOwnerDashboard: React.FC<ScreenOwnerDashboardProps> = ({
       await fetch(`/api/bookings/${id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, changedByUserId: 'u2222222-2222-2222-2222-222222222222' })
+        body: JSON.stringify({ status: newStatus, changedByUserId: 'a2222222-2222-2222-2222-222222222222' })
       });
       loadOwnerBookings();
     } catch (e) {

@@ -45,15 +45,15 @@ export const ScreenAddCar: React.FC<ScreenAddCarProps> = ({ onSaved, initialVehi
         setErrorMsg(err.error || 'Ошибка сохранения');
         // Fallback to local
         onSaved({
-          id: initialVehicle?.id || 'v1',
-          user_id: 'u1111111-1111-1111-1111-111111111111',
+          id: initialVehicle?.id || 'b2222222-2222-2222-2222-222222222222',
+          user_id: 'a1111111-1111-1111-1111-111111111111',
           ...vehicleData
         });
       }
     } catch (err) {
       onSaved({
-        id: initialVehicle?.id || 'v1',
-        user_id: 'u1111111-1111-1111-1111-111111111111',
+        id: initialVehicle?.id || 'b2222222-2222-2222-2222-222222222222',
+        user_id: 'a1111111-1111-1111-1111-111111111111',
         ...vehicleData
       });
     } finally {

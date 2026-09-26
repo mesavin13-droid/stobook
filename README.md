@@ -13,6 +13,7 @@ STOBOOK — полнофункциональный маркетплейс мгн
 - **Map Engine**: Модульная архитектура через абстракцию `MapProvider` (Leaflet/CartoDB/OSM по умолчанию без обязательных платных API ключей, готовность к Yandex/Google Maps)
 - **Availability Engine**: Расчёт свободных слотов с учётом рабочих часов, обеденных перерывов, нерабочих дней, занятости постов (bays) и графиков мастеров
 - **Atomic Booking**: Блокировка от состояния гонки (race conditions) и предотвращение двойного бронирования
+- **Сменное хранилище**: единый асинхронный контракт `Repository` с двумя реализациями — `memory` (dev, без внешних зависимостей) и `postgres` (Supabase, RLS + advisory locks). Выбор делает переменная `STOBOOK_DB`; в production значение `memory` запрещено, сервер падает на старте.
 
 ---
 
@@ -21,9 +22,10 @@ STOBOOK — полнофункциональный маркетплейс мгн
 ```
 ├── database/
 │   └── migrations/
-│       ├── 001_initial_schema.sql   # DDL для 28 таблиц, ENUMs, индексы
-│       ├── 002_rls_policies.sql     # RLS политики для всех ролей
-│       └── 003_seed_data.sql        # Демо-данные Новосибирска (5 СТО, авто, история)
+│       ├── 001_initial_schema.sql   # DDL для 30 таблиц, ENUMs, индексы
+│       ├── 002_rls_policies.sql     # RLS политики для всех ролей + триггеры валидации
+│       ├── 003_seed_data.sql        # Демо-данные Новосибирска (5 СТО, авто, история)
+│       └── 004_server_context.sql   # server_context для доверенных serverless-операций
 ├── public/
 │   ├── icon.svg                     # Иконка PWA
 │   ├── manifest.json                # Web App Manifest
@@ -46,12 +48,18 @@ STOBOOK — полнофункциональный маркетплейс мгн
 │   │   └── telegram/                # HMAC верификация и отправка сообщений
 │   ├── services/
 │   │   ├── availability/            # Алгоритм расчёта свободных слотов
-│   │   └── store/                   # In-memory/Supabase репозиторий с mutex
+│   │   ├── repository/              # Контракт Repository + memory и postgres реализации
+│   │   ├── notifications/           # Cron-воркер напоминаний
+│   │   └── store/                   # Legacy in-memory/Supabase репозиторий с mutex
 │   ├── types/                       # Строгие TypeScript интерфейсы
 │   └── validations/                 # Zod схемы валидации форм
 ├── test/
-│   └── run-tests.ts                 # Тесты доступности, бронирования и race-conditions
-├── server.ts                        # Full-stack Express сервер с cron-воркером
+│   ├── run-tests.ts                 # Pure-логика: доступность, бронирование, race-conditions
+│   ├── postgres-repository.ts       # SQL-контракт репозитория на моке pg Pool
+│   └── rbac-http.ts                 # Сквозные HTTP/RBAC/Lifecycle тесты
+├── scripts/migrate.ts               # Идемпотентный запуск миграций
+├── api/index.ts                     # Vercel serverless entrypoint (оборачивает createApp)
+├── server.ts                        # Standalone Express: API + раздача dist + cron
 └── package.json
 ```
 
@@ -68,13 +76,13 @@ cp .env.example .env
 Параметры:
 ```env
 # Supabase
-NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="your-anon-key"
+VITE_SUPABASE_URL="https://your-project.supabase.co"
+VITE_SUPABASE_PUBLISHABLE_KEY="your-publishable-key"
 SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 
 # Telegram Bot & Mini App
 TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
-NEXT_PUBLIC_TELEGRAM_BOT_USERNAME="stobook_bot"
+VITE_TELEGRAM_BOT_USERNAME="stobook_bot"
 
 # Web Push (VAPID)
 VAPID_PUBLIC_KEY="BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBKr3qBUYIHBQFLXYp5Nksh8U"
@@ -91,10 +99,29 @@ PAYMENT_API_KEY=""
 PAYMENT_WEBHOOK_SECRET=""
 
 # App URL
-NEXT_PUBLIC_APP_URL="http://localhost:3000"
+APP_URL="http://localhost:3000"
+PORT="3000"
+
+# Session signing (обязателен в production, минимум 32 символа)
+SESSION_SECRET="change-me-to-a-random-string-of-at-least-32-characters"
+
+# Хранилище: memory (только dev) | postgres
+# Production не стартует с STOBOOK_DB=memory.
+STOBOOK_DB="memory"
+
+# PostgreSQL из Supabase -> Project Settings -> Database.
+# Transaction pooler (порт 6543, pgbouncer=true) НЕ поддерживается:
+# движок записи использует advisory locks внутри транзакции.
+# Предпочтительно прямое подключение (db.<ref>.supabase.co:5432).
+# Если в сети нет IPv6 (CI, Vercel) — используйте SESSION pooler на 5432:
+# он держит одно backend-соединение на клиента и безопасен.
+DATABASE_URL="postgresql://postgres.your-ref:password@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
+
+# Защищает POST /api/cron/reminders (Authorization: Bearer $CRON_SECRET)
+CRON_SECRET="change-me-to-a-random-cron-secret"
 ```
 
-*Примечание: Если внешние токены Telegram, Supabase или карт не указаны, приложение автоматически переключается на встроенный отказоустойчивый провайдер с сохранением всей бизнес-логики и сценариев.*
+*Примечание: Если внешние токены Telegram, Supabase или карт не указаны, приложение автоматически переключается на встроенный отказоустойчивый провайдер с сохранением всей бизнес-логики и сценариев. В production это правило не действует — там обязательны `DATABASE_URL`, `SESSION_SECRET`, `CRON_SECRET` и `TELEGRAM_BOT_TOKEN`, иначе процесс завершается с понятной ошибкой.*
 
 ---
 
@@ -104,16 +131,23 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 # Установка зависимостей
 npm install
 
+# Применение миграций к базе (нужен DATABASE_URL)
+npm run migrate
+
 # Запуск приложения (сервер + Vite dev middleware на порту 3000)
 npm run dev
 
-# Запуск автоматизированных тестов
-npm test
+# Тесты
+npm test                 # pure-логика: 21 тест
+npm run test:postgres    # SQL-контракт репозитория: 50 тестов
+npm run test:http        # сквозные HTTP/RBAC: 48 тестов (нужен запущенный сервер)
 
-# Сборка для production
+# Сборка и запуск
 npm run build
 npm start
 ```
+
+> `npm run test:http` работает с любым хранилищем: с `STOBOOK_DB=memory` поднимается in-memory сервер, с `STOBOOK_DB=postgres` тесты идут против реальной базы и проверяют RLS, триггеры и advisory locks.
 
 ---
 
@@ -146,8 +180,26 @@ npm start
 
 ## 6. Тестирование
 
-Команда `npm test` запускает комплексный набор проверок:
-- Pure calculation engine (рабочие часы, обеды, доступность постов)
-- Создание бронирования и аудит истории статусов
-- Защита от состояния гонки (конкурентные запросы на один слот)
-- Завершение визита и сохранение истории с контролем доступа
+| Команда | Что проверяет |
+| --- | --- |
+| `npm run typecheck` / `npm run lint` | Строгая типизация (`tsc --noEmit`) |
+| `npm test` | Pure calculation engine (рабочие часы, обеды, доступность постов и мастеров), создание бронирования, защита от состояния гонки, завершение визита и запись в историю |
+| `npm run test:postgres` | SQL-контракт `PostgresRepository` на моке `pg.Pool`: RLS-идентичность, статусы, выдача и отзыв доступа к истории, транзакции |
+| `npm run test:http` | Сквозные сценарии по HTTP: авторизация, RBAC всех ролей, полный жизненный цикл записи `NEW → COMPLETED`, модерация, валидация, rate limit |
+
+---
+
+## 7. Деплой
+
+### Supabase
+1. Создайте проект и примените миграции: `npm run migrate`.
+2. Возьмите `DATABASE_URL` в разделе *Project Settings → Database*. Если ваша сеть без IPv6, берите **session pooler** (`aws-0-<region>.pooler.supabase.com:5432`), а не transaction pooler.
+
+### Vercel
+1. Подключите репозиторий и установите переменные окружения (production):
+   `STOBOOK_DB=postgres`, `DATABASE_URL`, `APP_URL`, `SESSION_SECRET`, `CRON_SECRET`, `TELEGRAM_BOT_TOKEN`.
+2. `vercel.json` собирает клиент через Vite и отдаёт API функцией `api/index.ts`; ревизии `/api/*` проксируются в ту же функцию.
+3. Проверка после деплоя: `GET /api/health` → `{"status":"ok","database":{"ok":true,"kind":"postgres"}}`.
+
+### Cron напоминаний
+План Hobby не позволяет запускать cron каждую минуту, поэтому расписание вынесено в GitHub Actions — `.github/workflows/reminder-cron.yml` каждые 15 минут вызывает `POST /api/cron/reminders` с заголовком `Authorization: Bearer $CRON_SECRET`. Секреты `APP_URL` и `CRON_SECRET` задаются в *Settings → Secrets and variables → Actions*.

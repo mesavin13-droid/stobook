@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Vehicle, ServiceCenter } from './types';
+import { Profile, Vehicle, ServiceCenter } from './types';
 import { Navigation } from './components/Navigation';
 
 // Screens
@@ -46,12 +46,13 @@ export type ScreenId =
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenId>('home');
+  const [profile, setProfile] = useState<Profile | null>(null);
 
   // Core Data
   const [vehicles, setVehicles] = useState<Vehicle[]>([
     {
-      id: 'v1111111-1111-1111-1111-111111111111',
-      user_id: 'u1111111-1111-1111-1111-111111111111',
+      id: 'b1111111-1111-1111-1111-111111111111',
+      user_id: 'a1111111-1111-1111-1111-111111111111',
       brand: 'Toyota',
       model: 'Camry',
       year: 2021,
@@ -63,8 +64,8 @@ export default function App() {
 
   const [serviceCenters, setServiceCenters] = useState<ServiceCenter[]>([
     {
-      id: 'sc01-0000-0000-0000-000000000001',
-      owner_id: 'u2222222-2222-2222-2222-222222222222',
+      id: 'c0010000-0000-0000-0000-000000000001',
+      owner_id: 'a2222222-2222-2222-2222-222222222222',
       city_id: 'c1111111-1111-1111-1111-111111111111',
       status: 'ACTIVE',
       name: 'ТОП МОТОРС',
@@ -81,15 +82,15 @@ export default function App() {
       availabilityStatus: 'today',
       available_today_slots: ['15:30', '17:00', '18:30'],
       services: [
-        { id: 'srv-01-01', service_center_id: 'sc01-0000-0000-0000-000000000001', custom_name: 'Замена тормозных колодок', price: 2500, duration_minutes: 60, custom_category: 'Тормоза', is_fixed_price: false, is_active: true },
-        { id: 'srv-01-02', service_center_id: 'sc01-0000-0000-0000-000000000001', custom_name: 'Замена масла и фильтров', price: 1500, duration_minutes: 40, custom_category: 'Замена масла', is_fixed_price: false, is_active: true },
-        { id: 'srv-01-03', service_center_id: 'sc01-0000-0000-0000-000000000001', custom_name: 'Компьютерная диагностика', price: 1000, duration_minutes: 30, custom_category: 'Диагностика', is_fixed_price: true, is_active: true },
-        { id: 'srv-01-04', service_center_id: 'sc01-0000-0000-0000-000000000001', custom_name: 'Развал-схождение', price: 1800, duration_minutes: 60, custom_category: 'Подвеска', is_fixed_price: false, is_active: true }
+        { id: 'f0010000-0000-0000-0000-000000000001', service_center_id: 'c0010000-0000-0000-0000-000000000001', custom_name: 'Замена тормозных колодок', price: 2500, duration_minutes: 60, custom_category: 'Тормоза', is_fixed_price: false, is_active: true },
+        { id: 'f0010000-0000-0000-0000-000000000002', service_center_id: 'c0010000-0000-0000-0000-000000000001', custom_name: 'Замена масла и фильтров', price: 1500, duration_minutes: 40, custom_category: 'Замена масла', is_fixed_price: false, is_active: true },
+        { id: 'f0010000-0000-0000-0000-000000000003', service_center_id: 'c0010000-0000-0000-0000-000000000001', custom_name: 'Компьютерная диагностика', price: 1000, duration_minutes: 30, custom_category: 'Диагностика', is_fixed_price: true, is_active: true },
+        { id: 'f0010000-0000-0000-0000-000000000004', service_center_id: 'c0010000-0000-0000-0000-000000000001', custom_name: 'Развал-схождение', price: 1800, duration_minutes: 60, custom_category: 'Подвеска', is_fixed_price: false, is_active: true }
       ]
     },
     {
-      id: 'sc02-0000-0000-0000-000000000002',
-      owner_id: 'u3333333-3333-3333-3333-333333333333',
+      id: 'c0020000-0000-0000-0000-000000000002',
+      owner_id: 'a3333333-3333-3333-3333-333333333333',
       city_id: 'c1111111-1111-1111-1111-111111111111',
       status: 'ACTIVE',
       name: 'НСК АВТО 54',
@@ -106,8 +107,8 @@ export default function App() {
       availabilityStatus: 'today',
       available_today_slots: ['17:00', '18:30'],
       services: [
-        { id: 'srv-02-01', service_center_id: 'sc02-0000-0000-0000-000000000002', custom_name: 'Замена тормозных колодок', price: 2300, duration_minutes: 50, custom_category: 'Тормоза', is_fixed_price: false, is_active: true },
-        { id: 'srv-02-02', service_center_id: 'sc02-0000-0000-0000-000000000002', custom_name: 'Замена масла', price: 1400, duration_minutes: 40, custom_category: 'Замена масла', is_fixed_price: false, is_active: true }
+        { id: 'f0020000-0000-0000-0000-000000000001', service_center_id: 'c0020000-0000-0000-0000-000000000002', custom_name: 'Замена тормозных колодок', price: 2300, duration_minutes: 50, custom_category: 'Тормоза', is_fixed_price: false, is_active: true },
+        { id: 'f0020000-0000-0000-0000-000000000002', service_center_id: 'c0020000-0000-0000-0000-000000000002', custom_name: 'Замена масла', price: 1400, duration_minutes: 40, custom_category: 'Замена масла', is_fixed_price: false, is_active: true }
       ]
     }
   ]);
@@ -116,13 +117,20 @@ export default function App() {
   const [selectedCenter, setSelectedCenter] = useState<ServiceCenter>(serviceCenters[0]);
   const [selectedTask, setSelectedTask] = useState<string>('Замена тормозных колодок');
   const [selectedServiceItem, setSelectedServiceItem] = useState<{ id: string; name: string; price: number; duration: number }>({
-    id: 'srv-01-01',
+    id: 'f0010000-0000-0000-0000-000000000001',
     name: 'Замена тормозных колодок',
     price: 2500,
     duration: 60
   });
   const [selectedDate, setSelectedDate] = useState<string>('2026-09-25');
   const [selectedTime, setSelectedTime] = useState<string>('17:30');
+
+  const loadVehicles = async (): Promise<Vehicle[]> => {
+    const response = await fetch('/api/vehicles', { credentials: 'same-origin' });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data) ? data as Vehicle[] : [];
+  };
 
   // Sync initial backend data
   useEffect(() => {
@@ -136,19 +144,25 @@ export default function App() {
       })
       .catch(() => {});
 
-    fetch('/api/vehicles')
+    loadVehicles()
+      .then((data) => {
+        if (data.length > 0) setVehicles(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'same-origin' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setVehicles(data);
-        }
+        if (data?.profile) setProfile(data.profile as Profile);
       })
       .catch(() => {});
   }, []);
 
   const activeVehicle = vehicles[0] || {
-    id: 'v1111111-1111-1111-1111-111111111111',
-    user_id: 'u1111111-1111-1111-1111-111111111111',
+    id: 'b1111111-1111-1111-1111-111111111111',
+    user_id: 'a1111111-1111-1111-1111-111111111111',
     brand: 'Toyota',
     model: 'Camry',
     year: 2021,
@@ -159,13 +173,17 @@ export default function App() {
   // Determine whether to display the bottom tab bar
   const showBottomNav = ['home', 'map', 'bookings', 'profile'].includes(currentScreen);
 
+  const requireAuthentication = (): boolean => {
+    if (profile) return true;
+    setCurrentScreen('auth');
+    return false;
+  };
+
   // Real atomic booking submission
   const handleConfirmBooking = async () => {
+    if (!requireAuthentication()) return;
     // If selected service center has real services, pick matched or first
-    const targetServiceId =
-      selectedCenter.services?.find((s) => s.custom_name === selectedServiceItem.name)?.id ||
-      selectedCenter.services?.[0]?.id ||
-      selectedServiceItem.id;
+    const targetServiceId = selectedServiceItem.id;
 
     // ISO start datetime
     const startAt = `${selectedDate}T${selectedTime}:00.000Z`;
@@ -173,6 +191,7 @@ export default function App() {
     const res = await fetch('/api/bookings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({
         serviceCenterId: selectedCenter.id,
         vehicleId: activeVehicle.id,
@@ -203,7 +222,15 @@ export default function App() {
       case 'auth':
         return (
           <ScreenAuth
-            onSuccess={() => setCurrentScreen('add_car')}
+            onSuccess={(authenticatedProfile) => {
+              setProfile(authenticatedProfile);
+              void loadVehicles()
+                .then((data) => {
+                  if (data.length > 0) setVehicles(data);
+                  setCurrentScreen(data.length > 0 ? 'home' : 'add_car');
+                })
+                .catch(() => setCurrentScreen('add_car'));
+            }}
             onBack={() => setCurrentScreen('onboarding')}
           />
         );
@@ -236,7 +263,9 @@ export default function App() {
               if (sc) setSelectedCenter(sc);
               setCurrentScreen('service_select');
             }}
-            onChangeVehicle={() => setCurrentScreen('add_car')}
+            onChangeVehicle={() => {
+              if (requireAuthentication()) setCurrentScreen('add_car');
+            }}
             onOpenNotifications={() => setCurrentScreen('bookings')}
             onOpenMap={() => setCurrentScreen('map')}
           />
@@ -318,6 +347,8 @@ export default function App() {
       case 'datetime_select':
         return (
           <ScreenDateTimeSelect
+            serviceCenterId={selectedCenter.id}
+            serviceCenterServiceId={selectedServiceItem.id}
             onBack={() => setCurrentScreen('service_select')}
             onNext={(date, time) => {
               setSelectedDate(date);
@@ -358,6 +389,7 @@ export default function App() {
         return (
           <ScreenBookingsList
             onNewBookingClick={() => setCurrentScreen('home')}
+            onAuthRequired={() => setCurrentScreen('auth')}
           />
         );
 
@@ -365,10 +397,25 @@ export default function App() {
         return (
           <ScreenProfile
             vehicle={activeVehicle}
-            onOpenCarProfile={() => setCurrentScreen('car_profile')}
-            onAddCar={() => setCurrentScreen('add_car')}
-            onSwitchToOwnerCabinet={() => setCurrentScreen('owner_dashboard')}
-            onSwitchToAdmin={() => setCurrentScreen('admin_dashboard')}
+            profile={profile}
+            onAuthenticate={() => setCurrentScreen('auth')}
+            onOpenCarProfile={() => {
+              if (requireAuthentication()) setCurrentScreen('car_profile');
+            }}
+            onAddCar={() => {
+              if (requireAuthentication()) setCurrentScreen('add_car');
+            }}
+            onSwitchToOwnerCabinet={() => {
+              if (profile && ['SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'].includes(profile.role)) {
+                setCurrentScreen('owner_dashboard');
+              } else {
+                setCurrentScreen('auth');
+              }
+            }}
+            onSwitchToAdmin={() => {
+              if (profile?.role === 'SUPER_ADMIN') setCurrentScreen('admin_dashboard');
+              else setCurrentScreen('auth');
+            }}
           />
         );
 

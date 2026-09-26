@@ -22,49 +22,44 @@ export interface VerifiedInitData {
  * As per Telegram Mini Apps documentation
  */
 export function verifyInitData(initDataString: string, botToken?: string): VerifiedInitData {
-  if (!initDataString) {
+  if (!initDataString || !botToken || botToken === 'your-telegram-bot-token') {
     return { isValid: false };
   }
 
   try {
     const params = new URLSearchParams(initDataString);
     const hash = params.get('hash');
-    if (!hash) return { isValid: false };
+    if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) {
+      return { isValid: false };
+    }
 
     params.delete('hash');
 
-    // Parse user object if present
     const userJson = params.get('user');
     let user: TelegramUser | undefined;
     if (userJson) {
-      try {
-        user = JSON.parse(userJson);
-      } catch (e) {
-        console.error('Failed to parse telegram user json', e);
+      const parsed = JSON.parse(userJson) as Partial<TelegramUser>;
+      if (typeof parsed.id !== 'number' || typeof parsed.first_name !== 'string') {
+        return { isValid: false };
       }
+      user = parsed as TelegramUser;
     }
 
-    const authDateStr = params.get('auth_date');
-    const authDate = authDateStr ? parseInt(authDateStr, 10) : undefined;
-
-    // In local development or if no botToken configured, permit mock/demo validation if user object exists
-    if (!botToken || botToken === 'your-telegram-bot-token') {
-      return {
-        isValid: true,
-        user: user || { id: 1097348022, first_name: 'Дмитрий', username: 'dmitry_nsk' },
-        authDate: authDate || Math.floor(Date.now() / 1000)
-      };
+    const authDateValue = params.get('auth_date');
+    const authDate = authDateValue ? Number(authDateValue) : Number.NaN;
+    if (!Number.isInteger(authDate) || authDate <= 0 || Math.abs(Date.now() / 1000 - authDate) > 86400) {
+      return { isValid: false };
+    }
+    if (!user) {
+      return { isValid: false };
     }
 
-    // Sort parameters alphabetically
     const keys = Array.from(params.keys()).sort();
     const dataCheckString = keys.map((key) => `${key}=${params.get(key)}`).join('\n');
-
-    // HMAC calculation
     const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
-    const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-
-    const isValid = calculatedHash === hash;
+    const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest();
+    const providedHash = Buffer.from(hash, 'hex');
+    const isValid = calculatedHash.length === providedHash.length && crypto.timingSafeEqual(calculatedHash, providedHash);
 
     return {
       isValid,
@@ -72,8 +67,7 @@ export function verifyInitData(initDataString: string, botToken?: string): Verif
       authDate,
       raw: Object.fromEntries(params.entries())
     };
-  } catch (error) {
-    console.error('Error verifying initData:', error);
+  } catch {
     return { isValid: false };
   }
 }
@@ -81,6 +75,16 @@ export function verifyInitData(initDataString: string, botToken?: string): Verif
 /**
  * Sends a message via Telegram Bot API
  */
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character] || character);
+}
+
 export async function sendTelegramMessage(chatId: number | string, text: string, replyMarkup?: any): Promise<boolean> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token || token === 'your-telegram-bot-token') {
@@ -100,7 +104,10 @@ export async function sendTelegramMessage(chatId: number | string, text: string,
         reply_markup: replyMarkup
       })
     });
-    const result = await res.json();
+    if (!res.ok) {
+      return false;
+    }
+    const result = await res.json() as { ok?: boolean };
     return result.ok === true;
   } catch (err) {
     console.error('Failed to send Telegram message:', err);
@@ -121,12 +128,12 @@ export async function sendBookingConfirmation(telegramId: number, params: {
   address: string;
 }) {
   const text = `🚗 <b>Запись создана в STOBOOK</b>\n\n` +
-    `📍 <b>${params.serviceCenterName}</b>\n` +
-    `📅 ${params.dateStr} в <b>${params.timeStr}</b>\n` +
-    `🚘 Автомобиль: ${params.vehicleName}\n` +
-    `🔧 Услуга: ${params.serviceName}\n` +
-    `💰 Стоимость: от ${params.priceStr}\n` +
-    `🗺 Адрес: ${params.address}\n\n` +
+    `📍 <b>${escapeHtml(params.serviceCenterName)}</b>\n` +
+    `📅 ${escapeHtml(params.dateStr)} в <b>${escapeHtml(params.timeStr)}</b>\n` +
+    `🚘 Автомобиль: ${escapeHtml(params.vehicleName)}\n` +
+    `🔧 Услуга: ${escapeHtml(params.serviceName)}\n` +
+    `💰 Стоимость: от ${escapeHtml(params.priceStr)}\n` +
+    `🗺 Адрес: ${escapeHtml(params.address)}\n\n` +
     `<i>Автосервис уже уведомлен. Мы пришлем напоминание за 1 час до визита!</i>`;
 
   return sendTelegramMessage(telegramId, text);
@@ -144,10 +151,10 @@ export async function sendBookingReminder(telegramId: number, params: {
   appUrl: string;
 }) {
   const text = `⏰ <b>Напоминание о записи в STOBOOK</b>\n\n` +
-    `Сегодня в <b>${params.timeStr}</b>\n` +
-    `СТО: <b>${params.serviceCenterName}</b>\n` +
-    `🔧 ${params.serviceName}\n` +
-    `🚘 ${params.vehicleName}\n\n` +
+    `Сегодня в <b>${escapeHtml(params.timeStr)}</b>\n` +
+    `СТО: <b>${escapeHtml(params.serviceCenterName)}</b>\n` +
+    `🔧 ${escapeHtml(params.serviceName)}\n` +
+    `🚘 ${escapeHtml(params.vehicleName)}\n\n` +
     `Пожалуйста, подтвердите визит или отмените, если планы изменились:`;
 
   const replyMarkup = {
@@ -175,10 +182,10 @@ export async function sendBookingCancellation(telegramId: number, params: {
   reason?: string;
 }) {
   const text = `❌ <b>Запись отменена</b>\n\n` +
-    `СТО: ${params.serviceCenterName}\n` +
-    `Время: ${params.timeStr}\n` +
-    `Услуга: ${params.serviceName}\n` +
-    (params.reason ? `Причина: ${params.reason}\n` : '') +
+    `СТО: ${escapeHtml(params.serviceCenterName)}\n` +
+    `Время: ${escapeHtml(params.timeStr)}\n` +
+    `Услуга: ${escapeHtml(params.serviceName)}\n` +
+    (params.reason ? `Причина: ${escapeHtml(params.reason)}\n` : '') +
     `\n<i>Слот снова доступен для других водителей. Ждем вас в следующий раз!</i>`;
 
   return sendTelegramMessage(telegramId, text);

@@ -1,5 +1,6 @@
 import { calculateAvailableSlots } from '../src/services/availability/index.js';
 import { store } from '../src/services/store/index.js';
+import { ADMIN_SESSION_TTL_SECONDS, createSessionToken, parseSessionToken } from '../src/lib/session.js';
 
 let passed = 0;
 let failed = 0;
@@ -57,10 +58,11 @@ async function runTests() {
 
   // Test 2: Booking Creation & Status History
   console.log('\n--- TEST 2: Booking Creation & History ---');
-  const topMotorsId = 'sc01-0000-0000-0000-000000000001';
-  const oilServiceId = 'scs01-0000-0000-0000-000000000001';
-  const vehicleId = 'v1111111-1111-1111-1111-111111111111';
-  const customerId = 'u1111111-1111-1111-1111-111111111111';
+  const topMotorsId = 'c0010000-0000-0000-0000-000000000001';
+  const oilServiceId = 'f0010000-0000-0000-0000-000000000001';
+  const vehicleId = 'b1111111-1111-1111-1111-111111111111';
+  const customerId = 'a1111111-1111-1111-1111-111111111111';
+  const adminId = 'a9999999-9999-9999-9999-999999999999';
 
   const tomorrowStr = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const targetSlotTime = `${tomorrowStr}T11:00:00.000Z`;
@@ -84,36 +86,34 @@ async function runTests() {
   );
   assert(statusHistory.length >= 1, 'Status history entry recorded');
 
-  // Test 3: Booking Race Condition (Double-Booking Prevention)
   console.log('\n--- TEST 3: Booking Race Condition (Double Booking Lock) ---');
-  // Both users simultaneously attempt to book the exact same slot
-  const [raceResultA, raceResultB] = await Promise.all([
-    store.bookAppointmentAtomic({
-      customerId: 'u1111111-1111-1111-1111-111111111111',
-      vehicleId,
-      serviceCenterId: topMotorsId,
-      serviceCenterServiceId: oilServiceId,
-      startAt: `${tomorrowStr}T14:00:00.000Z`
-    }),
-    store.bookAppointmentAtomic({
-      customerId: 'u_another_customer',
-      vehicleId: 'v_another_vehicle',
-      serviceCenterId: topMotorsId,
-      serviceCenterServiceId: oilServiceId,
-      startAt: `${tomorrowStr}T14:00:00.000Z`
-    })
-  ]);
-
-  // One may book post 1 and another post 2 if capacity allows,
-  // Let's exhaust ALL bays at 15:00:00 to guarantee race conflict:
   const slotToExhaust = `${tomorrowStr}T15:00:00.000Z`;
-  const baysCount = store.bays.filter((b) => b.service_center_id === topMotorsId).length;
+  const baysCount = store.bays.filter((bay) => bay.service_center_id === topMotorsId && bay.is_active).length;
+  const participants = Array.from({ length: baysCount + 2 }, (_, index) => {
+    const suffix = String(index + 4).padStart(2, '0');
+    const customerId = `a4444444-4444-4444-4444-4444444444${suffix}`;
+    const vehicleId = `b4444444-4444-4444-4444-4444444444${suffix}`;
+    store.profiles.push({
+      id: customerId,
+      role: 'CUSTOMER',
+      full_name: `Тестовый клиент ${index + 1}`
+    });
+    store.vehicles.push({
+      id: vehicleId,
+      user_id: customerId,
+      brand: 'Test',
+      model: 'Car',
+      year: 2022,
+      mileage: 1000
+    });
+    return { customerId, vehicleId };
+  });
 
   const simultaneousAttempts = await Promise.all(
-    Array.from({ length: baysCount + 2 }).map((_, idx) =>
+    participants.map((participant) =>
       store.bookAppointmentAtomic({
-        customerId: `customer_${idx}`,
-        vehicleId,
+        customerId: participant.customerId,
+        vehicleId: participant.vehicleId,
         serviceCenterId: topMotorsId,
         serviceCenterServiceId: oilServiceId,
         startAt: slotToExhaust
@@ -121,15 +121,19 @@ async function runTests() {
     )
   );
 
-  const successes = simultaneousAttempts.filter((r) => r.success).length;
-  const rejections = simultaneousAttempts.filter((r) => !r.success).length;
+  const successes = simultaneousAttempts.filter((result) => result.success).length;
+  const rejections = simultaneousAttempts.filter((result) => !result.success).length;
 
+  assert(successes > 0, `At least one booking succeeded (${successes})`);
   assert(successes <= baysCount, `Successful bookings (${successes}) <= total bays (${baysCount})`);
   assert(rejections >= 2, `Exceeded capacity requests were rejected (${rejections}) without double booking`);
 
-  // Test 4: Complete Service & Vehicle History Recording
   console.log('\n--- TEST 4: Service Completion & Vehicle History ---');
   if (bookingResult.appointment) {
+    const confirmed = store.updateAppointmentStatus(bookingResult.appointment.id, 'CONFIRMED', 'a2222222-2222-2222-2222-222222222222');
+    const arrived = store.updateAppointmentStatus(bookingResult.appointment.id, 'ARRIVED', 'a2222222-2222-2222-2222-222222222222');
+    const inProgress = store.updateAppointmentStatus(bookingResult.appointment.id, 'IN_PROGRESS', 'a2222222-2222-2222-2222-222222222222');
+    assert(confirmed.success && arrived.success && inProgress.success, 'Appointment progressed through the required workflow');
     const compResult = store.completeService({
       appointmentId: bookingResult.appointment.id,
       mileage: 85000,
@@ -146,6 +150,23 @@ async function runTests() {
     assert(Boolean(historyRecord), 'Vehicle service history recorded with works and parts');
     assert(historyRecord?.mileage === 85000, 'Mileage updated correctly');
   }
+
+  console.log('\n--- TEST 5: Signed Session Integrity ---');
+  const sessionNow = Date.now();
+  const sessionToken = createSessionToken(customerId, 1097348022, sessionNow);
+  const parsedSession = parseSessionToken(sessionToken, sessionNow);
+  assert(parsedSession?.userId === customerId, 'Session contains the authenticated user');
+  assert(parsedSession?.telegramId === 1097348022, 'Session contains the Telegram identity');
+  assert(parseSessionToken(`${sessionToken}tampered`, sessionNow) === null, 'Tampered session is rejected');
+  assert(parseSessionToken(sessionToken, sessionNow + 8 * 24 * 60 * 60 * 1000) === null, 'Expired session is rejected');
+
+  const adminToken = createSessionToken(adminId, 1097348024, sessionNow, ADMIN_SESSION_TTL_SECONDS);
+  const parsedAdmin = parseSessionToken(adminToken, sessionNow);
+  assert(
+    parsedAdmin !== null && parsedAdmin.expiresAt - parsedAdmin.issuedAt === ADMIN_SESSION_TTL_SECONDS,
+    'Admin session uses the shortened lifetime'
+  );
+  assert(parseSessionToken(adminToken, sessionNow + (ADMIN_SESSION_TTL_SECONDS + 60) * 1000) === null, 'Admin session expires early');
 
   // Summary
   console.log(`\n========================================`);

@@ -25,13 +25,13 @@ export const OwnerCabinet: React.FC<OwnerCabinetProps> = ({ onBackToCustomer }) 
 
   const loadData = () => {
     setLoading(true);
-    fetch('/api/service-centers/sc01-0000-0000-0000-000000000001')
+    fetch('/api/service-centers/c0010000-0000-0000-0000-000000000001')
       .then((res) => res.json())
       .then((sc) => {
         setServiceCenter(sc);
       });
 
-    fetch('/api/bookings?serviceCenterId=sc01-0000-0000-0000-000000000001')
+    fetch('/api/bookings?serviceCenterId=c0010000-0000-0000-0000-000000000001')
       .then((res) => res.json())
       .then((data) => {
         setAppointments(data);
@@ -55,7 +55,7 @@ export const OwnerCabinet: React.FC<OwnerCabinetProps> = ({ onBackToCustomer }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: newStatus,
-          changedByUserId: 'u2222222-2222-2222-2222-222222222222'
+          changedByUserId: 'a2222222-2222-2222-2222-222222222222'
         })
       });
 

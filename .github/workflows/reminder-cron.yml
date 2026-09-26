@@ -1,0 +1,38 @@
+name: STOBOOK reminder cron
+
+on:
+  schedule:
+    # every 15 minutes; the /api/cron/reminders window spans reminder_minutes +/- 15
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stobook-reminder-cron
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Send booking reminders
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger reminder sweep
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_URL}" ] || [ -z "${CRON_SECRET}" ]; then
+            echo "APP_URL and CRON_SECRET repository secrets are required" >&2
+            exit 1
+          fi
+          status=$(curl -sS -o /tmp/stobook-cron.json -w '%{http_code}' \
+            -X POST "${APP_URL%/}/api/cron/reminders" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 60)
+          cat /tmp/stobook-cron.json; echo
+          echo "HTTP ${status}"
+          test "${status}" = "200"

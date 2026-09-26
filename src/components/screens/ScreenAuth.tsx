@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Button, Input } from '../design-system';
 import { ArrowLeft, Send, Phone, ShieldCheck } from 'lucide-react';
+import { getTelegramInitData } from '../../lib/telegram/webapp';
+import type { Profile } from '../../types';
 
 export interface ScreenAuthProps {
-  onSuccess: () => void;
+  onSuccess: (profile: Profile) => void;
   onBack?: () => void;
 }
 
@@ -11,22 +13,33 @@ export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack }) => 
   const [authMode, setAuthMode] = useState<'telegram' | 'phone'>('telegram');
   const [phoneNumber, setPhoneNumber] = useState('+7 (913) ');
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handlePhoneSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      onSuccess();
-    }, 600);
+    setErrorMessage('Авторизация по номеру временно недоступна. Используйте Telegram.');
   };
 
-  const handleTelegramAuth = () => {
+  const handleTelegramAuth = async () => {
     setIsLoading(true);
-    setTimeout(() => {
+    setErrorMessage(null);
+    try {
+      const response = await fetch('/api/telegram/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ initData: getTelegramInitData() || '' })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.profile) {
+        throw new Error(payload.error || 'Не удалось авторизоваться');
+      }
+      onSuccess(payload.profile as Profile);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Не удалось авторизоваться');
+    } finally {
       setIsLoading(false);
-      onSuccess();
-    }, 500);
+    }
   };
 
   return (
@@ -117,6 +130,11 @@ export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack }) => 
               ← Вернуться к Telegram
             </button>
           </form>
+        )}
+        {errorMessage && (
+          <p role="alert" className="text-sm text-red-600 text-center">
+            {errorMessage}
+          </p>
         )}
       </div>
 

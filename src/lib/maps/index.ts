@@ -2,6 +2,16 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapBounds, MapMarkerData, MapProvider } from '../../types';
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character] || character);
+}
+
 export class LeafletMapProvider implements MapProvider {
   private map: L.Map | null = null;
   private markersMap = new Map<string, L.Marker>();
@@ -83,7 +93,7 @@ export class LeafletMapProvider implements MapProvider {
         }" style="background-color: #0f172a;">
           ${isPromoted ? '<span class="text-amber-400 text-[10px]">★</span>' : ''}
           <span class="inline-block w-2.5 h-2.5 rounded-full ${isToday ? 'animate-pulse' : ''}" style="background-color: ${statusColor};"></span>
-          <span class="tracking-tight whitespace-nowrap text-slate-100 font-semibold">${marker.name}</span>
+           <span class="tracking-tight whitespace-nowrap text-slate-100 font-semibold">${escapeHtml(marker.name)}</span>
           <span class="text-[11px] font-bold text-amber-400">★ ${marker.rating.toFixed(1)}</span>
         </div>
         <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[7px] border-t-slate-900 -mt-[1px]"></div>

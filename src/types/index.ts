@@ -232,7 +232,7 @@ export interface ServiceHistoryAccess {
   id: string;
   vehicle_id: string;
   service_center_id: string;
-  appointment_id?: string;
+  appointment_id?: string | null;
   service_center_name?: string;
   granted_by_customer: boolean;
   granted_at: string;

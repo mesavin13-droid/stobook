@@ -18,11 +18,18 @@ import {
   ServiceHistoryAccess,
   ServiceHistoryItem,
   SubscriptionPlan,
+  TelegramAccount,
   Vehicle,
   VehicleHistorySettings
-} from '../../types';
-import { calculateAvailableSlots } from '../availability';
-import { sendBookingConfirmation, sendBookingReminder, sendBookingCancellation } from '../../lib/telegram';
+} from '../../types/index.js';
+import { calculateAvailableSlots } from '../availability/index.js';
+import { sendBookingConfirmation, sendBookingReminder, sendBookingCancellation } from '../../lib/telegram/index.js';
+import {
+  isBookableServiceCenter,
+  isKnownStatus,
+  isTerminalStatus,
+  isTransitionAllowed
+} from '../repository/rules.js';
 
 // Mutex for atomic booking race conditions
 class AsyncLock {
@@ -39,8 +46,22 @@ class AsyncLock {
 
 const bookingLock = new AsyncLock();
 
+function createId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 class DataStore {
   public profiles: Profile[] = [];
+  public telegramAccounts: TelegramAccount[] = [];
   public cities: City[] = [];
   public vehicles: Vehicle[] = [];
   public vehicleHistorySettings: VehicleHistorySettings[] = [];
@@ -98,28 +119,28 @@ class DataStore {
     // Profiles
     this.profiles = [
       {
-        id: 'u1111111-1111-1111-1111-111111111111',
+        id: 'a1111111-1111-1111-1111-111111111111',
         role: 'CUSTOMER',
         full_name: 'Дмитрий',
         phone: '+7 (913) 900-11-22',
         avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80'
       },
       {
-        id: 'u2222222-2222-2222-2222-222222222222',
+        id: 'a2222222-2222-2222-2222-222222222222',
         role: 'SERVICE_OWNER',
         full_name: 'Алексей (ТОП МОТОРС)',
         phone: '+7 (383) 299-15-54',
         avatar_url: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=200&q=80'
       },
       {
-        id: 'u3333333-3333-3333-3333-333333333333',
+        id: 'a3333333-3333-3333-3333-333333333333',
         role: 'SERVICE_OWNER',
         full_name: 'Михаил (НСК АВТО 54)',
         phone: '+7 (383) 310-54-54',
         avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80'
       },
       {
-        id: 'u9999999-9999-9999-9999-999999999999',
+        id: 'a9999999-9999-9999-9999-999999999999',
         role: 'SUPER_ADMIN',
         full_name: 'Главный Администратор STOBOOK',
         phone: '+7 (800) 555-35-35',
@@ -127,11 +148,41 @@ class DataStore {
       }
     ];
 
+    this.telegramAccounts = [
+      {
+        id: 'a3010000-0000-0000-0000-000000000001',
+        user_id: 'a1111111-1111-1111-1111-111111111111',
+        telegram_id: 1097348022,
+        first_name: 'Дмитрий',
+        username: 'stobook_demo',
+        auth_date: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 'a3010000-0000-0000-0000-000000000002',
+        user_id: 'a2222222-2222-2222-2222-222222222222',
+        telegram_id: 1097348023,
+        first_name: 'Алексей',
+        username: 'topmotors_owner',
+        auth_date: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 'a3010000-0000-0000-0000-000000000003',
+        user_id: 'a9999999-9999-9999-9999-999999999999',
+        telegram_id: 1097348024,
+        first_name: 'Администратор',
+        username: 'stobook_admin',
+        auth_date: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      }
+    ];
+
     // Vehicles
     this.vehicles = [
       {
-        id: 'v1111111-1111-1111-1111-111111111111',
-        user_id: 'u1111111-1111-1111-1111-111111111111',
+        id: 'b1111111-1111-1111-1111-111111111111',
+        user_id: 'a1111111-1111-1111-1111-111111111111',
         brand: 'Toyota',
         model: 'Camry',
         year: 2021,
@@ -145,9 +196,9 @@ class DataStore {
     // Vehicle History Settings
     this.vehicleHistorySettings = [
       {
-        id: 'vhs-01',
-        vehicle_id: 'v1111111-1111-1111-1111-111111111111',
-        user_id: 'u1111111-1111-1111-1111-111111111111',
+        id: 'a2010000-0000-0000-0000-000000000001',
+        vehicle_id: 'b1111111-1111-1111-1111-111111111111',
+        user_id: 'a1111111-1111-1111-1111-111111111111',
         store_history: true,
         allow_service_view: true
       }
@@ -160,8 +211,8 @@ class DataStore {
 
     this.serviceCenters = [
       {
-        id: 'sc01-0000-0000-0000-000000000001',
-        owner_id: 'u2222222-2222-2222-2222-222222222222',
+        id: 'c0010000-0000-0000-0000-000000000001',
+        owner_id: 'a2222222-2222-2222-2222-222222222222',
         city_id: 'c1111111-1111-1111-1111-111111111111',
         name: 'ТОП МОТОРС',
         description: 'Специализированный сервисный центр японских и европейских автомобилей. Современные подъемники, сертифицированные масла, гарантия на работы 12 месяцев.',
@@ -185,8 +236,8 @@ class DataStore {
         ]
       },
       {
-        id: 'sc02-0000-0000-0000-000000000002',
-        owner_id: 'u3333333-3333-3333-3333-333333333333',
+        id: 'c0020000-0000-0000-0000-000000000002',
+        owner_id: 'a3333333-3333-3333-3333-333333333333',
         city_id: 'c1111111-1111-1111-1111-111111111111',
         name: 'НСК АВТО 54',
         description: 'Крупный автотехцентр на левом берегу. 4 подъемника, стенд 3D сход-развала, оригинальные масла Motul и Idemitsu.',
@@ -208,8 +259,8 @@ class DataStore {
         ]
       },
       {
-        id: 'sc03-0000-0000-0000-000000000003',
-        owner_id: 'u2222222-2222-2222-2222-222222222222',
+        id: 'c0030000-0000-0000-0000-000000000003',
+        owner_id: 'a2222222-2222-2222-2222-222222222222',
         city_id: 'c1111111-1111-1111-1111-111111111111',
         name: 'Автосервис Бункер',
         description: 'Ремонт ходовой, тормозных систем и быстрый шиномонтаж. Честные цены и видеофиксация ремонта.',
@@ -231,8 +282,8 @@ class DataStore {
         ]
       },
       {
-        id: 'sc04-0000-0000-0000-000000000004',
-        owner_id: 'u3333333-3333-3333-3333-333333333333',
+        id: 'c0040000-0000-0000-0000-000000000004',
+        owner_id: 'a3333333-3333-3333-3333-333333333333',
         city_id: 'c1111111-1111-1111-1111-111111111111',
         name: 'Auto Garage',
         description: 'Премиальный сервис возле центра города. Чистые посты, вежливые мастера, качественные расходники.',
@@ -254,8 +305,8 @@ class DataStore {
         ]
       },
       {
-        id: 'sc05-0000-0000-0000-000000000005',
-        owner_id: 'u2222222-2222-2222-2222-222222222222',
+        id: 'c0050000-0000-0000-0000-000000000005',
+        owner_id: 'a2222222-2222-2222-2222-222222222222',
         city_id: 'c1111111-1111-1111-1111-111111111111',
         name: 'Garage 154',
         description: 'Комплексный ремонт двигателей, подвески и трансмиссий. Работаем без выходных.',
@@ -282,8 +333,8 @@ class DataStore {
     this.services = [
       // ТОП МОТОРС services
       {
-        id: 'scs01-0000-0000-0000-000000000001',
-        service_center_id: 'sc01-0000-0000-0000-000000000001',
+        id: 'f0010000-0000-0000-0000-000000000001',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
         custom_name: 'Замена моторного масла и фильтра',
         custom_category: 'Замена масла',
         price: 1500,
@@ -292,8 +343,8 @@ class DataStore {
         is_active: true
       },
       {
-        id: 'scs01-0000-0000-0000-000000000002',
-        service_center_id: 'sc01-0000-0000-0000-000000000001',
+        id: 'f0010000-0000-0000-0000-000000000002',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
         custom_name: 'Комплексное регулярное ТО',
         custom_category: 'ТО',
         price: 3200,
@@ -302,8 +353,8 @@ class DataStore {
         is_active: true
       },
       {
-        id: 'scs01-0000-0000-0000-000000000003',
-        service_center_id: 'sc01-0000-0000-0000-000000000001',
+        id: 'f0010000-0000-0000-0000-000000000003',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
         custom_name: 'Компьютерная диагностика и осмотр ходовой',
         custom_category: 'Диагностика',
         price: 1200,
@@ -312,8 +363,8 @@ class DataStore {
         is_active: true
       },
       {
-        id: 'scs01-0000-0000-0000-000000000004',
-        service_center_id: 'sc01-0000-0000-0000-000000000001',
+        id: 'f0010000-0000-0000-0000-000000000004',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
         custom_name: 'Замена тормозных колодок (передняя ось)',
         custom_category: 'Тормоза',
         price: 1800,
@@ -323,8 +374,8 @@ class DataStore {
       },
       // НСК АВТО 54 services
       {
-        id: 'scs02-0000-0000-0000-000000000001',
-        service_center_id: 'sc02-0000-0000-0000-000000000002',
+        id: 'f0020000-0000-0000-0000-000000000001',
+        service_center_id: 'c0020000-0000-0000-0000-000000000002',
         custom_name: 'Замена масла и фильтров',
         custom_category: 'Замена масла',
         price: 1600,
@@ -333,8 +384,8 @@ class DataStore {
         is_active: true
       },
       {
-        id: 'scs02-0000-0000-0000-000000000002',
-        service_center_id: 'sc02-0000-0000-0000-000000000002',
+        id: 'f0020000-0000-0000-0000-000000000002',
+        service_center_id: 'c0020000-0000-0000-0000-000000000002',
         custom_name: 'Комплексная диагностика подвески',
         custom_category: 'Диагностика',
         price: 1100,
@@ -344,8 +395,8 @@ class DataStore {
       },
       // Auto Garage services
       {
-        id: 'scs04-0000-0000-0000-000000000001',
-        service_center_id: 'sc04-0000-0000-0000-000000000004',
+        id: 'f0040000-0000-0000-0000-000000000001',
+        service_center_id: 'c0040000-0000-0000-0000-000000000004',
         custom_name: 'Экспресс замена масла',
         custom_category: 'Замена масла',
         price: 1700,
@@ -357,21 +408,21 @@ class DataStore {
 
     // Bays for each service center
     this.bays = [
-      { id: 'b01-1', service_center_id: 'sc01-0000-0000-0000-000000000001', name: 'Пост №1 (Подъемник 4т)', bay_type: 'lift', is_active: true },
-      { id: 'b01-2', service_center_id: 'sc01-0000-0000-0000-000000000001', name: 'Пост №2 (Экспресс-масло/Яма)', bay_type: 'pit', is_active: true },
-      { id: 'b01-3', service_center_id: 'sc01-0000-0000-0000-000000000001', name: 'Пост №3 (Диагностика)', bay_type: 'diagnostics', is_active: true },
-      { id: 'b02-1', service_center_id: 'sc02-0000-0000-0000-000000000002', name: 'Пост №1', bay_type: 'lift', is_active: true },
-      { id: 'b02-2', service_center_id: 'sc02-0000-0000-0000-000000000002', name: 'Пост №2', bay_type: 'lift', is_active: true },
-      { id: 'b03-1', service_center_id: 'sc03-0000-0000-0000-000000000003', name: 'Пост №1', bay_type: 'lift', is_active: true },
-      { id: 'b04-1', service_center_id: 'sc04-0000-0000-0000-000000000004', name: 'Пост №1', bay_type: 'lift', is_active: true },
-      { id: 'b05-1', service_center_id: 'sc05-0000-0000-0000-000000000005', name: 'Пост №1', bay_type: 'lift', is_active: true }
+      { id: 'd0010000-0000-0000-0000-000000000001', service_center_id: 'c0010000-0000-0000-0000-000000000001', name: 'Пост №1 (Подъемник 4т)', bay_type: 'lift', is_active: true },
+      { id: 'd0010000-0000-0000-0000-000000000002', service_center_id: 'c0010000-0000-0000-0000-000000000001', name: 'Пост №2 (Экспресс-масло/Яма)', bay_type: 'pit', is_active: true },
+      { id: 'd0010000-0000-0000-0000-000000000003', service_center_id: 'c0010000-0000-0000-0000-000000000001', name: 'Пост №3 (Диагностика)', bay_type: 'diagnostics', is_active: true },
+      { id: 'd0020000-0000-0000-0000-000000000001', service_center_id: 'c0020000-0000-0000-0000-000000000002', name: 'Пост №1', bay_type: 'lift', is_active: true },
+      { id: 'd0020000-0000-0000-0000-000000000002', service_center_id: 'c0020000-0000-0000-0000-000000000002', name: 'Пост №2', bay_type: 'lift', is_active: true },
+      { id: 'd0030000-0000-0000-0000-000000000001', service_center_id: 'c0030000-0000-0000-0000-000000000003', name: 'Пост №1', bay_type: 'lift', is_active: true },
+      { id: 'd0040000-0000-0000-0000-000000000001', service_center_id: 'c0040000-0000-0000-0000-000000000004', name: 'Пост №1', bay_type: 'lift', is_active: true },
+      { id: 'd0050000-0000-0000-0000-000000000001', service_center_id: 'c0050000-0000-0000-0000-000000000005', name: 'Пост №1', bay_type: 'lift', is_active: true }
     ];
 
     // Masters
     this.masters = [
       {
-        id: 'm01-1',
-        service_center_id: 'sc01-0000-0000-0000-000000000001',
+        id: 'e0010000-0000-0000-0000-000000000001',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
         full_name: 'Иван Васильев',
         phone: '+7 (913) 911-22-33',
         specialization: 'Мастер ТО и моторных масел',
@@ -379,8 +430,8 @@ class DataStore {
         schedule_json: { work_days: [0, 1, 2, 3, 4, 5, 6], start: '09:00', end: '20:00' }
       },
       {
-        id: 'm01-2',
-        service_center_id: 'sc01-0000-0000-0000-000000000001',
+        id: 'e0010000-0000-0000-0000-000000000002',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
         full_name: 'Сергей Ковалев',
         phone: '+7 (913) 922-33-44',
         specialization: 'Мастер ходовой и тормозных систем',
@@ -388,8 +439,8 @@ class DataStore {
         schedule_json: { work_days: [0, 1, 2, 3, 4, 5, 6], start: '09:00', end: '20:00' }
       },
       {
-        id: 'm01-3',
-        service_center_id: 'sc01-0000-0000-0000-000000000001',
+        id: 'e0010000-0000-0000-0000-000000000003',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
         full_name: 'Артем Новиков',
         phone: '+7 (913) 933-44-55',
         specialization: 'Диагност-электрик',
@@ -397,15 +448,15 @@ class DataStore {
         schedule_json: { work_days: [1, 2, 3, 4, 5], start: '10:00', end: '19:00' }
       },
       {
-        id: 'm02-1',
-        service_center_id: 'sc02-0000-0000-0000-000000000002',
+        id: 'e0020000-0000-0000-0000-000000000001',
+        service_center_id: 'c0020000-0000-0000-0000-000000000002',
         full_name: 'Константин',
         is_active: true,
         schedule_json: { work_days: [0, 1, 2, 3, 4, 5, 6], start: '08:30', end: '21:00' }
       },
       {
-        id: 'm04-1',
-        service_center_id: 'sc04-0000-0000-0000-000000000004',
+        id: 'e0040000-0000-0000-0000-000000000001',
+        service_center_id: 'c0040000-0000-0000-0000-000000000004',
         full_name: 'Денис',
         is_active: true,
         schedule_json: { work_days: [0, 1, 2, 3, 4, 5, 6], start: '09:00', end: '20:00' }
@@ -428,10 +479,10 @@ class DataStore {
     // Historical records for Dmitry's Camry
     this.serviceHistory = [
       {
-        id: 'sh01-0000-0000-0000-000000000001',
-        vehicle_id: 'v1111111-1111-1111-1111-111111111111',
+        id: 'a1010000-0000-0000-0000-000000000001',
+        vehicle_id: 'b1111111-1111-1111-1111-111111111111',
         appointment_id: null,
-        service_center_id: 'sc01-0000-0000-0000-000000000001',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
         service_center_name: 'ТОП МОТОРС',
         service_date: '2026-09-18',
         mileage: 84320,
@@ -451,10 +502,10 @@ class DataStore {
         created_at: '2026-09-18T10:00:00Z'
       },
       {
-        id: 'sh02-0000-0000-0000-000000000002',
-        vehicle_id: 'v1111111-1111-1111-1111-111111111111',
+        id: 'a1020000-0000-0000-0000-000000000002',
+        vehicle_id: 'b1111111-1111-1111-1111-111111111111',
         appointment_id: null,
-        service_center_id: 'sc01-0000-0000-0000-000000000001',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
         service_center_name: 'ТОП МОТОРС',
         service_date: '2026-03-15',
         mileage: 76100,
@@ -471,10 +522,24 @@ class DataStore {
       }
     ];
 
+    this.serviceHistoryAccess = [
+      {
+        id: 'a1030000-0000-0000-0000-000000000001',
+        vehicle_id: 'b1111111-1111-1111-1111-111111111111',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
+        service_center_name: 'ТОП МОТОРС',
+        appointment_id: null,
+        granted_by_customer: true,
+        granted_at: '2026-08-26T09:00:00Z',
+        revoked_at: null,
+        expires_at: '2027-08-26T09:00:00Z'
+      }
+    ];
+
     // Subscription Plans
     this.subscriptionPlans = [
       {
-        id: 'sp01-0000-0000-0000-000000000001',
+        id: 'b0010000-0000-0000-0000-000000000001',
         name: 'Базовый',
         description: 'Для небольших автосервисов до 2 постов',
         price: 3900,
@@ -485,7 +550,7 @@ class DataStore {
         sort_order: 1
       },
       {
-        id: 'sp02-0000-0000-0000-000000000002',
+        id: 'b0010000-0000-0000-0000-000000000002',
         name: 'Профессиональный',
         description: 'Оптимально для автотехцентров до 6 постов',
         price: 7900,
@@ -496,7 +561,7 @@ class DataStore {
         sort_order: 2
       },
       {
-        id: 'sp03-0000-0000-0000-000000000003',
+        id: 'b0010000-0000-0000-0000-000000000003',
         name: 'Премиум',
         description: 'Для крупных сетевых СТО и автокомплексов',
         price: 14900,
@@ -511,7 +576,7 @@ class DataStore {
     // Promotion types
     this.promotionTypes = [
       {
-        id: 'pt01-0000-0000-0000-000000000001',
+        id: 'c1010000-0000-0000-0000-000000000001',
         code: 'MAP_BOOST',
         name: 'Выделенный пин на карте',
         description: 'Увеличенный цветной маркер с золотой обводкой и логотипом на карте города',
@@ -520,7 +585,7 @@ class DataStore {
         active: true
       },
       {
-        id: 'pt02-0000-0000-0000-000000000002',
+        id: 'c1020000-0000-0000-0000-000000000002',
         code: 'FEATURED_CARD',
         name: 'Топ в «Мне нужно сегодня»',
         description: 'Закрепление карточки СТО на первых позициях при поиске свободных окон',
@@ -529,7 +594,7 @@ class DataStore {
         active: true
       },
       {
-        id: 'pt03-0000-0000-0000-000000000003',
+        id: 'c1030000-0000-0000-0000-000000000003',
         code: 'DISTRICT_PIN',
         name: 'Лидер района',
         description: 'Приоритетный показ всем пользователям в радиусе 5 км вашего района',
@@ -538,7 +603,7 @@ class DataStore {
         active: true
       },
       {
-        id: 'pt04-0000-0000-0000-000000000004',
+        id: 'c1040000-0000-0000-0000-000000000004',
         code: 'TODAY_AVAILABLE',
         name: 'Бейдж «Горящие окна»',
         description: 'Специальная анимация пульсации и бейдж срочной записи',
@@ -550,7 +615,7 @@ class DataStore {
 
     // Seed some today appointments for TOP MOTORS dashboard to show 12 bookings & 5 free slots
     const today = new Date().toISOString().split('T')[0];
-    const topMotorsId = 'sc01-0000-0000-0000-000000000001';
+    const topMotorsId = 'c0010000-0000-0000-0000-000000000001';
 
     // A few initial bookings for testing
     const sampleSlots = [
@@ -564,13 +629,13 @@ class DataStore {
 
     sampleSlots.forEach((slot, i) => {
       this.appointments.push({
-        id: `seed-appt-${i + 1}`,
-        customer_id: 'u1111111-1111-1111-1111-111111111111',
-        vehicle_id: 'v1111111-1111-1111-1111-111111111111',
+        id: `d101-0000-0000-0000-${String(i + 1).padStart(12, '0')}`,
+        customer_id: 'a1111111-1111-1111-1111-111111111111',
+        vehicle_id: 'b1111111-1111-1111-1111-111111111111',
         service_center_id: topMotorsId,
-        service_center_service_id: 'scs01-0000-0000-0000-000000000001',
-        master_id: 'm01-1',
-        bay_id: 'b01-1',
+        service_center_service_id: 'f0010000-0000-0000-0000-000000000001',
+        master_id: 'e0010000-0000-0000-0000-000000000001',
+        bay_id: 'd0010000-0000-0000-0000-000000000001',
         start_at: `${today}T${slot.start}:00.000Z`,
         end_at: `${today}T${slot.end}:00.000Z`,
         price: 1500,
@@ -587,10 +652,27 @@ class DataStore {
 
   // --- Availability Query ---
   public getAvailabilityForService(serviceCenterId: string, serviceCenterServiceId: string, dateStr: string): AvailableSlot[] {
+    const serviceCenter = this.serviceCenters.find((center) => center.id === serviceCenterId);
+    if (!serviceCenter) {
+      throw new Error('Автосервис не найден');
+    }
+
+    const service = this.services.find((offeredService) =>
+      offeredService.id === serviceCenterServiceId &&
+      offeredService.service_center_id === serviceCenterId &&
+      offeredService.is_active
+    );
+    if (!service) {
+      throw new Error('Услуга не найдена или недоступна в этом автосервисе');
+    }
+
+    if (!isBookableServiceCenter(serviceCenter)) {
+      return [];
+    }
+
     const scHours = this.businessHours.filter((h) => h.service_center_id === serviceCenterId);
     const scBays = this.bays.filter((b) => b.service_center_id === serviceCenterId);
     const scMasters = this.masters.filter((m) => m.service_center_id === serviceCenterId);
-    const scService = this.services.find((s) => s.id === serviceCenterServiceId);
 
     const existingAppointments = this.appointments.filter((a) => {
       if (a.service_center_id !== serviceCenterId) return false;
@@ -605,7 +687,7 @@ class DataStore {
       workingHours: scHours,
       bays: scBays,
       masters: scMasters,
-      service: scService,
+      service,
       existingAppointments
     });
   }
@@ -620,14 +702,44 @@ class DataStore {
     customerNote?: string;
   }): Promise<{ success: boolean; appointment?: Appointment; error?: string }> {
     return bookingLock.acquire(async () => {
-      const dateStr = params.startAt.split('T')[0];
-      const slots = this.getAvailabilityForService(params.serviceCenterId, params.serviceCenterServiceId, dateStr);
+      const customer = this.profiles.find((profile) => profile.id === params.customerId);
+      if (!customer || customer.role !== 'CUSTOMER') {
+        return { success: false, error: 'Клиент не найден' };
+      }
+
+      const vehicle = this.vehicles.find((item) => item.id === params.vehicleId);
+      if (!vehicle || vehicle.user_id !== params.customerId) {
+        return { success: false, error: 'Автомобиль не найден или принадлежит другому клиенту' };
+      }
+
+      const serviceCenter = this.serviceCenters.find((center) => center.id === params.serviceCenterId);
+      if (!serviceCenter || !isBookableServiceCenter(serviceCenter)) {
+        return { success: false, error: 'Автосервис недоступен для записи' };
+      }
+
+      const service = this.services.find((item) =>
+        item.id === params.serviceCenterServiceId &&
+        item.service_center_id === params.serviceCenterId &&
+        item.is_active
+      );
+      if (!service) {
+        return { success: false, error: 'Услуга недоступна в выбранном автосервисе' };
+      }
 
       const targetTime = new Date(params.startAt).getTime();
-      const matchingSlot = slots.find((s) => {
-        return Math.abs(new Date(s.startAt).getTime() - targetTime) < 60000;
-      });
+      if (!Number.isFinite(targetTime) || targetTime <= Date.now()) {
+        return { success: false, error: 'Выберите будущую дату и время' };
+      }
 
+      const dateStr = params.startAt.slice(0, 10);
+      let slots: AvailableSlot[];
+      try {
+        slots = this.getAvailabilityForService(params.serviceCenterId, params.serviceCenterServiceId, dateStr);
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Не удалось рассчитать доступность' };
+      }
+
+      const matchingSlot = slots.find((slot) => new Date(slot.startAt).getTime() === targetTime);
       if (!matchingSlot || !matchingSlot.available) {
         return {
           success: false,
@@ -635,23 +747,17 @@ class DataStore {
         };
       }
 
-      const service = this.services.find((s) => s.id === params.serviceCenterServiceId);
-      const vehicle = this.vehicles.find((v) => v.id === params.vehicleId);
-      const sc = this.serviceCenters.find((s) => s.id === params.serviceCenterId);
-      const duration = service?.duration_minutes || 60;
-      const endAt = new Date(new Date(params.startAt).getTime() + duration * 60000).toISOString();
-
       const newAppt: Appointment = {
-        id: 'appt-' + Math.random().toString(36).substring(2, 10),
+        id: createId(),
         customer_id: params.customerId,
         vehicle_id: params.vehicleId,
         service_center_id: params.serviceCenterId,
         service_center_service_id: params.serviceCenterServiceId,
         master_id: matchingSlot.masterId || null,
         bay_id: matchingSlot.bayId || null,
-        start_at: params.startAt,
-        end_at: endAt,
-        price: service?.price || 1500,
+        start_at: matchingSlot.startAt,
+        end_at: matchingSlot.endAt,
+        price: service.price,
         status: 'NEW',
         customer_note: params.customerNote || null,
         service_note: null,
@@ -661,10 +767,8 @@ class DataStore {
       };
 
       this.appointments.push(newAppt);
-
-      // Status history entry
       this.appointmentStatusHistory.push({
-        id: 'ash-' + Math.random().toString(36).substring(2, 10),
+        id: createId(),
         appointment_id: newAppt.id,
         old_status: null,
         new_status: 'NEW',
@@ -673,42 +777,37 @@ class DataStore {
         created_at: new Date().toISOString()
       });
 
-      // Check if vehicle has history access allowed
-      const historySetting = this.vehicleHistorySettings.find((h) => h.vehicle_id === params.vehicleId);
-      if (historySetting?.allow_service_view) {
+      const historySetting = this.vehicleHistorySettings.find((setting) => setting.vehicle_id === params.vehicleId);
+      const hasActiveAccess = this.serviceHistoryAccess.some(
+        (access) => access.vehicle_id === params.vehicleId
+          && access.service_center_id === params.serviceCenterId
+          && !access.revoked_at
+      );
+      if (historySetting?.store_history && historySetting.allow_service_view && !hasActiveAccess) {
         this.serviceHistoryAccess.push({
-          id: 'sha-' + Math.random().toString(36).substring(2, 10),
+          id: createId(),
           vehicle_id: params.vehicleId,
           service_center_id: params.serviceCenterId,
           appointment_id: newAppt.id,
-          service_center_name: sc?.name,
+          service_center_name: serviceCenter.name,
           granted_by_customer: true,
           granted_at: new Date().toISOString(),
           revoked_at: null,
-          expires_at: null // Active until service completed or customer revokes
+          expires_at: null
         });
       }
 
-      // Send telegram confirmation simulation / notification
-      const dateFormatted = matchingSlot.formattedDate;
-      const timeFormatted = matchingSlot.formattedTime;
-      const vehicleName = vehicle ? `${vehicle.brand} ${vehicle.model}` : 'Автомобиль';
-      const serviceName = service?.custom_name || 'Автосервис';
-
       sendBookingConfirmation(1097348022, {
-        serviceCenterName: sc?.name || 'СТО',
-        dateStr: dateFormatted,
-        timeStr: timeFormatted,
-        vehicleName,
-        serviceName,
+        serviceCenterName: serviceCenter.name,
+        dateStr: matchingSlot.formattedDate,
+        timeStr: matchingSlot.formattedTime,
+        vehicleName: `${vehicle.brand} ${vehicle.model}`,
+        serviceName: service.custom_name,
         priceStr: `${newAppt.price.toLocaleString('ru-RU')} ₽`,
-        address: sc?.address || 'Новосибирск'
-      }).catch((e) => console.error('Telegram error:', e));
+        address: serviceCenter.address
+      }).catch((error) => console.error('Telegram error:', error));
 
-      return {
-        success: true,
-        appointment: newAppt
-      };
+      return { success: true, appointment: newAppt };
     });
   }
 
@@ -725,11 +824,18 @@ class DataStore {
     }
 
     const oldStatus = appt.status;
+    if (!isKnownStatus(newStatus)) {
+      return { success: false, error: 'Неизвестный статус записи' };
+    }
+    if (!isTransitionAllowed(oldStatus, newStatus)) {
+      return { success: false, error: `Переход из статуса ${oldStatus} в ${newStatus} недопустим` };
+    }
+
     appt.status = newStatus;
     appt.updated_at = new Date().toISOString();
 
     this.appointmentStatusHistory.push({
-      id: 'ash-' + Math.random().toString(36).substring(2, 10),
+      id: createId(),
       appointment_id: appt.id,
       old_status: oldStatus,
       new_status: newStatus,
@@ -738,26 +844,24 @@ class DataStore {
       created_at: new Date().toISOString()
     });
 
-    // If cancelled, slot becomes immediately available again.
-    // If completed, automatically revoke service_history_access as specified in requirements!
-    if (newStatus === 'COMPLETED') {
+    if (isTerminalStatus(newStatus)) {
       const accessEntries = this.serviceHistoryAccess.filter(
-        (sha) => sha.appointment_id === appointmentId && !sha.revoked_at
+        (access) => access.appointment_id === appointmentId && !access.revoked_at
       );
-      accessEntries.forEach((sha) => {
-        sha.revoked_at = new Date().toISOString();
+      accessEntries.forEach((access) => {
+        access.revoked_at = new Date().toISOString();
       });
     }
 
     if (newStatus === 'CANCELLED_BY_CUSTOMER' || newStatus === 'CANCELLED_BY_SERVICE') {
-      const sc = this.serviceCenters.find((s) => s.id === appt.service_center_id);
-      const srv = this.services.find((s) => s.id === appt.service_center_service_id);
+      const serviceCenter = this.serviceCenters.find((center) => center.id === appt.service_center_id);
+      const service = this.services.find((item) => item.id === appt.service_center_service_id);
       sendBookingCancellation(1097348022, {
-        serviceCenterName: sc?.name || 'СТО',
+        serviceCenterName: serviceCenter?.name || 'СТО',
         timeStr: new Date(appt.start_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-        serviceName: srv?.custom_name || 'Услуга',
+        serviceName: service?.custom_name || 'Услуга',
         reason
-      }).catch((e) => console.error('Telegram error:', e));
+      }).catch((error) => console.error('Telegram error:', error));
     }
 
     return { success: true, appointment: appt };
@@ -771,37 +875,43 @@ class DataStore {
     work_performed: string[];
     parts: { name: string; quantity: number; cost: number }[];
     comment?: string;
+    changedByUserId?: string;
   }): { success: boolean; historyItem?: ServiceHistoryItem; error?: string } {
     const appt = this.appointments.find((a) => a.id === params.appointmentId);
     if (!appt) {
       return { success: false, error: 'Запись не найдена' };
     }
+    if (appt.status !== 'IN_PROGRESS') {
+      return { success: false, error: 'Завершить можно только запись в работе' };
+    }
+    if (this.serviceHistory.some((item) => item.appointment_id === appt.id)) {
+      return { success: false, error: 'История по этой записи уже сохранена' };
+    }
 
-    // Update appointment status to COMPLETED
-    this.updateAppointmentStatus(appt.id, 'COMPLETED', appt.service_center_id, 'Обслуживание завершено');
+    const serviceCenter = this.serviceCenters.find((center) => center.id === appt.service_center_id);
+    const statusResult = this.updateAppointmentStatus(appt.id, 'COMPLETED', params.changedByUserId || serviceCenter?.owner_id || 'system', 'Обслуживание завершено');
+    if (!statusResult.success) {
+      return { success: false, error: statusResult.error };
+    }
 
-    // Update vehicle mileage
     const vehicle = this.vehicles.find((v) => v.id === appt.vehicle_id);
     if (vehicle && params.mileage > vehicle.mileage) {
       vehicle.mileage = params.mileage;
       vehicle.updated_at = new Date().toISOString();
     }
 
-    // Check if client allowed storing history
-    const historySetting = this.vehicleHistorySettings.find((h) => h.vehicle_id === appt.vehicle_id);
+    const historySetting = this.vehicleHistorySettings.find((setting) => setting.vehicle_id === appt.vehicle_id);
     if (historySetting && !historySetting.store_history) {
       return { success: true };
     }
 
-    const sc = this.serviceCenters.find((s) => s.id === appt.service_center_id);
-
     const historyItem: ServiceHistoryItem = {
-      id: 'sh-' + Math.random().toString(36).substring(2, 10),
+      id: createId(),
       vehicle_id: appt.vehicle_id,
       appointment_id: appt.id,
       service_center_id: appt.service_center_id,
-      service_center_name: sc?.name || 'Автосервис',
-      service_date: new Date().toISOString().split('T')[0],
+      service_center_name: serviceCenter?.name || 'Автосервис',
+      service_date: appt.start_at.slice(0, 10),
       mileage: params.mileage,
       cost: params.cost,
       work_performed: params.work_performed,
@@ -828,37 +938,46 @@ class DataStore {
     return true;
   }
 
+  public revokeAllHistoryAccess(vehicleId: string): number {
+    const entries = this.serviceHistoryAccess.filter(
+      (access) => access.vehicle_id === vehicleId && !access.revoked_at
+    );
+    const revokedAt = new Date().toISOString();
+    entries.forEach((entry) => {
+      entry.revoked_at = revokedAt;
+    });
+    return entries.length;
+  }
+
   // --- Cron Job (Runs every minute to check 60-min reminder) ---
-  public runReminderCron(): number {
+  public async runReminderCron(): Promise<number> {
     const nowMs = Date.now();
+    const reminderMinutes = this.platformSettings.booking_reminder_minutes;
     let sentCount = 0;
 
     for (const appt of this.appointments) {
       if (appt.reminder_sent_at) continue;
-      if (['CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_SERVICE', 'COMPLETED'].includes(appt.status)) continue;
+      if (['CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_SERVICE', 'COMPLETED', 'NO_SHOW'].includes(appt.status)) continue;
 
       const startMs = new Date(appt.start_at).getTime();
       const diffMinutes = Math.round((startMs - nowMs) / 60000);
+      if (Math.abs(diffMinutes - reminderMinutes) > 15) continue;
 
-      // Target ~60 minutes window (e.g. between 45 and 75 minutes ahead)
-      if (diffMinutes >= 45 && diffMinutes <= 75) {
+      const serviceCenter = this.serviceCenters.find((center) => center.id === appt.service_center_id);
+      const vehicle = this.vehicles.find((item) => item.id === appt.vehicle_id);
+      const service = this.services.find((item) => item.id === appt.service_center_service_id);
+      const sent = await sendBookingReminder(1097348022, {
+        appointmentId: appt.id,
+        serviceCenterName: serviceCenter?.name || 'СТО',
+        timeStr: new Date(appt.start_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        vehicleName: vehicle ? `${vehicle.brand} ${vehicle.model}` : 'Автомобиль',
+        serviceName: service?.custom_name || 'Услуга',
+        appUrl: process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      });
+
+      if (sent) {
         appt.reminder_sent_at = new Date().toISOString();
         sentCount++;
-
-        const sc = this.serviceCenters.find((s) => s.id === appt.service_center_id);
-        const vehicle = this.vehicles.find((v) => v.id === appt.vehicle_id);
-        const srv = this.services.find((s) => s.id === appt.service_center_service_id);
-
-        const timeStr = new Date(appt.start_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-
-        sendBookingReminder(1097348022, {
-          appointmentId: appt.id,
-          serviceCenterName: sc?.name || 'СТО',
-          timeStr,
-          vehicleName: vehicle ? `${vehicle.brand} ${vehicle.model}` : 'Автомобиль',
-          serviceName: srv?.custom_name || 'Услуга',
-          appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-        }).catch((err) => console.error('Cron reminder error:', err));
       }
     }
 
