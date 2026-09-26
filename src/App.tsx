@@ -162,6 +162,68 @@ export default function App() {
     setCurrentScreen('booking_success');
   };
 
+  // Open a real route to the selected center in Yandex Maps
+  const handleNavigateToCenter = () => {
+    const destination = selectedCenter?.address || selectedCenter?.name;
+    if (!destination) {
+      notify('Адрес автосервиса не указан');
+      return;
+    }
+    window.open(
+      `https://yandex.ru/maps/?text=${encodeURIComponent(destination)}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+  };
+
+  // Export the appointment as a real .ics calendar file
+  const handleAddToCalendar = () => {
+    if (!selectedCenter || !selectedServiceItem || !selectedDate || !selectedTime) {
+      notify('Данные записи неполные — календарь недоступен');
+      return;
+    }
+
+    const escapeIcs = (value: string) =>
+      value
+        .replace(/\\/g, '\\\\')
+        .replace(/;/g, '\\;')
+        .replace(/,/g, '\\,')
+        .replace(/\r?\n/g, '\\n');
+
+    const start = new Date(`${selectedDate}T${selectedTime}:00Z`);
+    const end = new Date(start.getTime() + (selectedServiceItem.duration || 60) * 60_000);
+    const toIcsDate = (value: Date) =>
+      value.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//STOBOOK//Booking//RU',
+      'CALSCALE:GREGORIAN',
+      'BEGIN:VEVENT',
+      `UID:${Date.now()}-${selectedCenter.id}@stobook`,
+      `DTSTAMP:${toIcsDate(new Date())}`,
+      `DTSTART:${toIcsDate(start)}`,
+      `DTEND:${toIcsDate(end)}`,
+      `SUMMARY:${escapeIcs(`${selectedServiceItem.name} — ${selectedCenter.name}`)}`,
+      `LOCATION:${escapeIcs(selectedCenter.address)}`,
+      'DESCRIPTION:' + escapeIcs('Запись создана в STOBOOK'),
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ];
+
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `stobook-${selectedDate}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    notify('Файл календаря сохранён');
+  };
+
   // Render active screen
   const renderScreen = () => {
     const center = selectedCenter;
@@ -364,10 +426,11 @@ export default function App() {
             vehicle={vehicle}
             serviceCenter={center}
             serviceName={serviceItem.name}
+            dateStr={selectedDate}
             timeStr={selectedTime}
             onOpenBooking={() => setCurrentScreen('bookings')}
-            onNavigateToCenter={() => notify('Построение маршрута пока недоступно')}
-            onAddToCalendar={() => notify('Добавление в календарь пока недоступно')}
+            onNavigateToCenter={handleNavigateToCenter}
+            onAddToCalendar={handleAddToCalendar}
           />
         ) : (
           missingFlowData

@@ -7,6 +7,7 @@ export interface ScreenBookingSuccessProps {
   vehicle: Vehicle;
   serviceCenter: ServiceCenter;
   serviceName: string;
+  dateStr?: string;
   timeStr: string;
   onOpenBooking: () => void;
   onNavigateToCenter: () => void;
@@ -17,11 +18,20 @@ export const ScreenBookingSuccess: React.FC<ScreenBookingSuccessProps> = ({
   vehicle,
   serviceCenter,
   serviceName,
-  timeStr = '17:30',
+  dateStr,
+  timeStr,
   onOpenBooking,
   onNavigateToCenter,
   onAddToCalendar
 }) => {
+  const formattedDate = dateStr
+    ? new Date(`${dateStr}T00:00:00`).toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      })
+    : null;
+
   return (
     <div className="min-h-full flex flex-col justify-between bg-[#F6F7F8] p-6 sm:p-8 text-center select-none">
       {/* Top Graphic */}
@@ -36,7 +46,8 @@ export const ScreenBookingSuccess: React.FC<ScreenBookingSuccessProps> = ({
             Вы записаны
           </h1>
           <p className="text-base font-extrabold text-[#35B86B]">
-            25 сентября в {timeStr}
+            {formattedDate ? `${formattedDate} в ` : 'Сегодня в '}
+            {timeStr}
           </p>
         </div>
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StatusBadge, Button } from '../design-system';
 import { Calendar, Clock, MapPin, ChevronRight, AlertCircle, Wrench, Star, X } from 'lucide-react';
 import { Appointment } from '../../types';
+import { AddReviewModal } from '../review/AddReviewModal';
 
 export interface ScreenBookingsListProps {
   onSelectBooking?: (booking: any) => void;
@@ -18,6 +19,8 @@ export const ScreenBookingsList: React.FC<ScreenBookingsListProps> = ({
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => Date.now());
+  const [reviewTarget, setReviewTarget] = useState<Appointment | null>(null);
+  const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
 
   const loadBookings = () => {
     fetch('/api/bookings', { credentials: 'same-origin' })
@@ -212,7 +215,16 @@ export const ScreenBookingsList: React.FC<ScreenBookingsListProps> = ({
 
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <button
-                      onClick={() => alert(`Маршрут к ${app.service_center?.name || 'СТО'} передан в навигатор`)}
+                      onClick={() => {
+                        const destination =
+                          app.service_center?.address || app.service_center?.name || '';
+                        if (!destination) return;
+                        window.open(
+                          `https://yandex.ru/maps/?text=${encodeURIComponent(destination)}`,
+                          '_blank',
+                          'noopener,noreferrer'
+                        );
+                      }}
                       className="h-11 rounded-[14px] bg-[#111315] hover:bg-[#1B1E20] text-xs font-bold text-white transition-colors"
                     >
                       Построить маршрут
@@ -267,12 +279,23 @@ export const ScreenBookingsList: React.FC<ScreenBookingsListProps> = ({
                   {app.status === 'COMPLETED' && (
                     <div className="pt-2 flex items-center justify-between text-xs border-t border-[#E1E4E6]/60">
                       <span className="text-[#35B86B] font-bold">✓ Запись в сервисной книжке</span>
-                      <button
-                        onClick={onNewBookingClick}
-                        className="text-xs font-bold text-[#111315] hover:underline"
-                      >
-                        Повторить запись →
-                      </button>
+                      <div className="flex items-center gap-3">
+                        {!reviewedIds.has(app.id) && (
+                          <button
+                            onClick={() => setReviewTarget(app as Appointment)}
+                            className="text-xs font-bold text-[#111315] hover:underline flex items-center gap-1"
+                          >
+                            <Star className="w-3.5 h-3.5 text-[#F2B84B]" />
+                            Оставить отзыв
+                          </button>
+                        )}
+                        <button
+                          onClick={onNewBookingClick}
+                          className="text-xs font-bold text-[#111315] hover:underline"
+                        >
+                          Повторить запись →
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -281,6 +304,21 @@ export const ScreenBookingsList: React.FC<ScreenBookingsListProps> = ({
           )}
         </div>
       )}
+
+      {/* Review modal for completed visits */}
+      <AddReviewModal
+        appointment={reviewTarget}
+        isOpen={reviewTarget !== null}
+        onClose={() => setReviewTarget(null)}
+        onReviewSubmitted={() => {
+          if (!reviewTarget) return;
+          setReviewedIds((current) => {
+            const next = new Set(current);
+            next.add(reviewTarget.id);
+            return next;
+          });
+        }}
+      />
     </div>
   );
 };
