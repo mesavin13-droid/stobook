@@ -32,16 +32,30 @@ export function isTerminalStatus(status: AppointmentStatus): boolean {
   return TERMINAL_STATUSES.includes(status);
 }
 
+/**
+ * Можно ли принимать записи в автосервис.
+ *
+ * Пока монетизация выключена, статус TRIAL не ограничивает работу: центры
+ * нужны на платформе бесплатно, иначе истечение пробного периода выкидывало
+ * бы зарегистрировавшихся из выдачи. Статусы BLOCKED и SUSPENDED — это
+ * модерация, а не оплата, поэтому они действуют всегда.
+ *
+ * @param monetizationEnabled текущее состояние монетизации платформы
+ */
 export function isBookableServiceCenter(
-  serviceCenter: { status: ServiceCenterStatus | string; trial_ends_at?: string | null }
+  serviceCenter: { status: ServiceCenterStatus | string; trial_ends_at?: string | null },
+  monetizationEnabled: boolean = true
 ): boolean {
+  if (serviceCenter.status === 'BLOCKED' || serviceCenter.status === 'SUSPENDED') return false;
   if (serviceCenter.status === 'ACTIVE') return true;
   if (serviceCenter.status !== 'TRIAL') return false;
+  if (!monetizationEnabled) return true;
   return !serviceCenter.trial_ends_at || new Date(serviceCenter.trial_ends_at).getTime() > Date.now();
 }
 
 export function isPublicServiceCenter(
-  serviceCenter: { status: ServiceCenterStatus | string; trial_ends_at?: string | null }
+  serviceCenter: { status: ServiceCenterStatus | string; trial_ends_at?: string | null },
+  monetizationEnabled?: boolean
 ): boolean {
-  return isBookableServiceCenter(serviceCenter);
+  return isBookableServiceCenter(serviceCenter, monetizationEnabled);
 }

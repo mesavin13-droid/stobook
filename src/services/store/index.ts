@@ -84,7 +84,8 @@ class DataStore {
     trial_days: 14,
     booking_reminder_minutes: 60,
     default_city: 'Новосибирск',
-    currency: 'RUB'
+    currency: 'RUB',
+    monetization_enabled: false
   };
 
   private initialized = false;
@@ -101,7 +102,8 @@ class DataStore {
       trial_days: 14,
       booking_reminder_minutes: 60,
       default_city: 'Новосибирск',
-      currency: 'RUB'
+      currency: 'RUB',
+      monetization_enabled: false
     };
 
     // City: Novosibirsk
@@ -666,7 +668,7 @@ class DataStore {
       throw new Error('Услуга не найдена или недоступна в этом автосервисе');
     }
 
-    if (!isBookableServiceCenter(serviceCenter)) {
+    if (!isBookableServiceCenter(serviceCenter, this.platformSettings.monetization_enabled)) {
       return [];
     }
 
@@ -713,7 +715,7 @@ class DataStore {
       }
 
       const serviceCenter = this.serviceCenters.find((center) => center.id === params.serviceCenterId);
-      if (!serviceCenter || !isBookableServiceCenter(serviceCenter)) {
+      if (!serviceCenter || !isBookableServiceCenter(serviceCenter, this.platformSettings.monetization_enabled)) {
         return { success: false, error: 'Автосервис недоступен для записи' };
       }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button, Input } from '../design-system';
 import { ArrowLeft, CheckCircle2, Clock, MapPin, ShieldCheck, Wrench } from 'lucide-react';
 import { Profile } from '../../types';
@@ -24,6 +24,23 @@ export const ScreenOwnerRegister: React.FC<ScreenOwnerRegisterProps> = ({ onBack
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isDone, setIsDone] = useState(false);
+  // Пока монетизация выключена, обещать «14 дней бесплатного тарифа» нельзя:
+  // ограничения по сроку нет вообще. Флаг берём у платформы, чтобы текст
+  // совпадал с тем, что реально делает сервер при регистрации.
+  const [monetizationEnabled, setMonetizationEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/public/settings')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled) setMonetizationEnabled(Boolean(data?.monetization_enabled));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const update = (patch: Partial<typeof EMPTY_FORM>) => setForm((current) => ({ ...current, ...patch }));
 
@@ -105,7 +122,9 @@ export const ScreenOwnerRegister: React.FC<ScreenOwnerRegisterProps> = ({ onBack
 
         <div className="flex items-center gap-2 text-[11px] font-semibold text-[#70777D] bg-white border border-[#E1E4E6] rounded-[14px] px-3 py-2">
           <ShieldCheck className="w-4 h-4 text-[#35B86B]" />
-          14 дней бесплатного тарифа после одобрения
+          {monetizationEnabled
+            ? 'Бесплатный период начнётся после одобрения'
+            : 'Бесплатно и без ограничения по сроку'}
         </div>
       </div>
 

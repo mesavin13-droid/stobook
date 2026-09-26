@@ -1023,7 +1023,7 @@ export class PostgresRepository implements Repository {
       throw new RepositoryError('SERVICE_NOT_FOUND', 'Услуга не найдена или недоступна в этом автосервисе');
     }
 
-    const [hoursResult, baysResult, mastersResult, appointmentsResult] = await Promise.all([
+    const [hoursResult, baysResult, mastersResult, appointmentsResult, monetizationResult] = await Promise.all([
       queryable.query('SELECT * FROM business_hours WHERE service_center_id = $1', [serviceCenterId]),
       queryable.query('SELECT * FROM service_bays WHERE service_center_id = $1 AND is_active', [serviceCenterId]),
       queryable.query('SELECT * FROM masters WHERE service_center_id = $1 AND is_active', [serviceCenterId]),
@@ -1035,11 +1035,15 @@ export class PostgresRepository implements Repository {
             AND start_at < ($2::date + INTERVAL '1 day')
             AND status <> ALL($3::appointment_status[])`,
         [serviceCenterId, dateStr, TERMINAL_STATUSES]
-      )
+      ),
+      // Флаг монетизации нужен для проверки доступности записи и берётся
+      // в том же заходе, что и остальные входные данные.
+      queryable.query(`SELECT value_json FROM platform_settings WHERE key = 'monetization_enabled'`)
     ]);
 
     return {
       center,
+      monetizationEnabled: monetizationResult.rows[0]?.value_json === true,
       service: mapCenterService(serviceRow),
       workingHours: hoursResult.rows.map(mapBusinessHours),
       bays: baysResult.rows.map(mapBay),
@@ -1060,7 +1064,7 @@ export class PostgresRepository implements Repository {
     serviceCenterServiceId: string,
     dateStr: string
   ): AvailableSlot[] {
-    if (!isBookableServiceCenter(inputs.center)) return [];
+    if (!isBookableServiceCenter(inputs.center, inputs.monetizationEnabled)) return [];
     return calculateAvailableSlots({
       serviceCenterId,
       serviceCenterServiceId,
@@ -1562,7 +1566,10 @@ export class PostgresRepository implements Repository {
         DEFAULT_PLATFORM_SETTINGS.booking_reminder_minutes
       ),
       default_city: String(stored.default_city ?? DEFAULT_PLATFORM_SETTINGS.default_city),
-      currency: String(stored.currency ?? DEFAULT_PLATFORM_SETTINGS.currency)
+      currency: String(stored.currency ?? DEFAULT_PLATFORM_SETTINGS.currency),
+      // Пока ключа нет в базе, монетизация считается выключенной: безопаснее
+      // не ограничивать автосервисы, чем случайно отключить их после деплоя.
+      monetization_enabled: stored.monetization_enabled === true
     };
   }
 

@@ -114,7 +114,8 @@ export interface RegisterServiceCenterInput {
   reviews_count: number;
   status: ServiceCenterStatus;
   trialStartedAt: string;
-  trialEndsAt: string;
+  // null, когда монетизация выключена: доступ без ограничения по сроку.
+  trialEndsAt: string | null;
   photos: string[];
   baysCount: number;
   mastersCount: number;
@@ -298,7 +299,8 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   trial_days: 14,
   booking_reminder_minutes: 60,
   default_city: 'Новосибирск',
-  currency: 'RUB'
+  currency: 'RUB',
+  monetization_enabled: false
 };
 
 export function isUserRole(value: unknown): value is UserRole {

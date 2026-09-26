@@ -1,5 +1,6 @@
 import { calculateAvailableSlots } from '../src/services/availability/index.js';
 import { store } from '../src/services/store/index.js';
+import { isBookableServiceCenter } from '../src/services/repository/rules.js';
 import { ADMIN_SESSION_TTL_SECONDS, createSessionToken, parseSessionToken } from '../src/lib/session.js';
 import { waitForTelegramInitData } from '../src/lib/telegram/webapp.js';
 
@@ -192,6 +193,27 @@ async function runTests() {
   } finally {
     if (originalWindow === undefined) delete globals.window;
     else globals.window = originalWindow;
+  }
+
+  // Test 7: Monetization Switch
+  console.log('\n--- TEST 7: Monetization Switch ---');
+  {
+    const past = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    const future = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
+    const expiredTrial = { status: 'TRIAL', trial_ends_at: past };
+
+    assert(!isBookableServiceCenter(expiredTrial, true), 'Expired trial is not bookable while monetised');
+    assert(isBookableServiceCenter(expiredTrial, false), 'Expired trial stays bookable while monetisation is off');
+    assert(isBookableServiceCenter({ status: 'TRIAL', trial_ends_at: future }, true), 'Running trial is bookable');
+    assert(isBookableServiceCenter({ status: 'TRIAL', trial_ends_at: null }, false), 'Trial without a deadline is bookable');
+    assert(isBookableServiceCenter({ status: 'ACTIVE' }, true), 'Active center is bookable');
+
+    // Moderation is not monetisation: a blocked center must stay closed either way.
+    assert(!isBookableServiceCenter({ status: 'BLOCKED' }, false), 'Blocked center stays closed with monetisation off');
+    assert(!isBookableServiceCenter({ status: 'SUSPENDED' }, false), 'Suspended center stays closed with monetisation off');
+    assert(!isBookableServiceCenter({ status: 'PENDING' }, false), 'Pending center is not bookable before moderation');
+
+    assert(store.platformSettings.monetization_enabled === false, 'Monetisation is off by default in the in-memory store');
   }
 
   // Summary

@@ -185,7 +185,18 @@ export const platformSettingsSchema = z.object({
   trial_days: z.coerce.number().int().min(1).max(365),
   booking_reminder_minutes: z.coerce.number().int().min(10).max(1440),
   default_city: z.string().trim().min(2).max(120),
-  currency: z.string().trim().min(2).max(5)
+  currency: z.string().trim().min(2).max(5),
+  // Флаг приходит из формы чекбоксом, поэтому приводим и булево значение,
+  // и строку. Наивный z.coerce.boolean() превратил бы строку "false" в true.
+  monetization_enabled: z.preprocess(
+    (value) =>
+      typeof value === 'string'
+        ? value === 'true' || value === '1'
+        : value === undefined || value === null
+          ? false
+          : Boolean(value),
+    z.boolean()
+  )
 });
 
 export type PlatformSettingsInput = z.infer<typeof platformSettingsSchema>;

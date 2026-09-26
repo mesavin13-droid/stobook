@@ -14,7 +14,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
     trial_days: 14,
     booking_reminder_minutes: 60,
     default_city: 'Новосибирск',
-    currency: 'RUB'
+    currency: 'RUB',
+    monetization_enabled: false
   });
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'moderation' | 'settings' | 'tariffs'>('overview');
@@ -116,14 +117,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
           )}
         </button>
-        <button
-          onClick={() => setActiveTab('tariffs')}
-          className={`py-3 border-b-2 transition-colors ${
-            activeTab === 'tariffs' ? 'border-amber-500 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          Тарифы и Продвижение
-        </button>
+        {settings.monetization_enabled && (
+          <button
+            onClick={() => setActiveTab('tariffs')}
+            className={`py-3 border-b-2 transition-colors ${
+              activeTab === 'tariffs'
+                ? 'border-amber-500 text-slate-900'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            Тарифы и Продвижение
+          </button>
+        )}
         <button
           onClick={() => setActiveTab('settings')}
           className={`py-3 border-b-2 transition-colors flex items-center gap-1.5 ${
@@ -274,7 +279,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
       )}
 
       {/* TARIFFS & PROMOTIONS (Sections 45 & 47) */}
-      {activeTab === 'tariffs' && (
+      {activeTab === 'tariffs' && settings.monetization_enabled && (
         <div className="space-y-6">
           {/* Subscription Plans */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
@@ -340,6 +345,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
           )}
 
           <form onSubmit={handleSaveSettings} className="space-y-4">
+            <div className={`rounded-2xl border p-4 ${settings.monetization_enabled ? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-900 mb-1">Монетизация платформы</p>
+                  <p className="text-[11px] leading-relaxed text-slate-600">
+                    {settings.monetization_enabled
+                      ? 'Включена. Пробный период ограничивает работу автосервиса, в выдаче работает платное продвижение.'
+                      : 'Выключена. Все автосервисы работают бесплатно и без ограничения по сроку, платное продвижение не показывается. Режим для набора аудитории.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.monetization_enabled}
+                  onClick={() =>
+                    setSettings({ ...settings, monetization_enabled: !settings.monetization_enabled })
+                  }
+                  className={`shrink-0 w-[52px] h-[30px] rounded-full p-[3px] flex transition-colors ${
+                    settings.monetization_enabled ? 'bg-amber-500' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                      settings.monetization_enabled ? 'translate-x-[22px]' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-2">
+                Переключатель вступит в силу сразу после сохранения. Приём платежей останется недоступен, пока
+                не подключён реальный провайдер (ЮKassa или Т-Банк).
+              </p>
+            </div>
+
             <div>
               <label className="text-xs font-bold text-slate-700 block mb-1">
                 Бесплатный пробный период для новых СТО (дней)
@@ -349,9 +388,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
                 min={1}
                 max={365}
                 value={settings.trial_days}
+                disabled={!settings.monetization_enabled}
                 onChange={(e) => setSettings({ ...settings, trial_days: parseInt(e.target.value, 10) || 14 })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-amber-500 focus:outline-none disabled:opacity-50"
               />
+              {!settings.monetization_enabled && (
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Не применяется, пока монетизация выключена: новые СТО получают доступ без ограничения по сроку.
+                </p>
+              )}
             </div>
 
             <div>

@@ -176,6 +176,20 @@ export function createApp({ repository, env }: AppDependencies): Express {
     })
   );
 
+  // Открытые настройки для неавторизованного клиента. Отдаём только флаг
+  // монетизации: по нему интерфейс формулирует условия для автосервиса
+  // («бесплатно» или «пробный период»), не раскрывая внутренних параметров.
+  app.get(
+    '/api/public/settings',
+    wrap(async (_req, res) => {
+      const settings = await repository.getPlatformSettings();
+      res.json({
+        monetization_enabled: settings.monetization_enabled,
+        trial_days: settings.monetization_enabled ? settings.trial_days : null
+      });
+    })
+  );
+
   app.post(
     '/api/cron/reminders',
     wrap(async (req, res) => {
@@ -299,9 +313,12 @@ export function createApp({ repository, env }: AppDependencies): Express {
 
       const centers = await repository.listServiceCenters();
       const results = [];
+      // Настройки читаем один раз до цикла: иначе на каждый автосервис
+      // уходил бы отдельный запрос за ними.
+      const { monetization_enabled: monetizationEnabled } = await repository.getPlatformSettings();
 
       for (const center of centers) {
-        if (!isBookableServiceCenter(center)) continue;
+        if (!isBookableServiceCenter(center, monetizationEnabled)) continue;
         const services = await repository.listServiceCenterServices(center.id, { activeOnly: true });
         const primaryService = services[0];
 
@@ -335,7 +352,9 @@ export function createApp({ repository, env }: AppDependencies): Express {
           availabilityStatus,
           available_today_slots: availableToday,
           minPrice,
-          is_promoted: center.id === PROMOTED_CENTER_ID
+          // Пока монетизация выключена, платного продвижения на платформе
+          // нет, поэтому метку «промо» не показываем ни одному центру.
+          is_promoted: monetizationEnabled && center.id === PROMOTED_CENTER_ID
         });
       }
 
@@ -375,7 +394,8 @@ export function createApp({ repository, env }: AppDependencies): Express {
     '/api/service-centers/:id',
     wrap(async (req, res) => {
       const center = await repository.getServiceCenter(req.params.id);
-      if (!center || !isBookableServiceCenter(center)) {
+      const { monetization_enabled: monetizationEnabled } = await repository.getPlatformSettings();
+      if (!center || !isBookableServiceCenter(center, monetizationEnabled)) {
         res.status(404).json({ error: 'Автосервис не найден' });
         return;
       }
@@ -739,7 +759,12 @@ export function createApp({ repository, env }: AppDependencies): Express {
 
       const settings = await repository.getPlatformSettings();
       const now = new Date();
-      const trialEnds = new Date(now.getTime() + (settings.trial_days || 14) * 24 * 60 * 60 * 1000);
+      // Пока монетизация выключена, новый центр получает доступ без срока
+      // (trial_ends_at = null). Ставить 14 дней значило бы через две недели
+      // выкинуть его из выдачи — как раз то, чего не хотим на старте.
+      const trialEndsAt = settings.monetization_enabled
+        ? new Date(now.getTime() + (settings.trial_days || 14) * 24 * 60 * 60 * 1000).toISOString()
+        : null;
       const ownerId = getRequestAuth(req).profile.id;
 
       const center = await repository.registerServiceCenter({
@@ -759,7 +784,7 @@ export function createApp({ repository, env }: AppDependencies): Express {
         reviews_count: 0,
         status: 'PENDING',
         trialStartedAt: now.toISOString(),
-        trialEndsAt: trialEnds.toISOString(),
+        trialEndsAt,
         photos: [],
         baysCount: parse.data.baysCount,
         mastersCount: parse.data.mastersCount
@@ -1127,17 +1152,21 @@ export function createApp({ repository, env }: AppDependencies): Express {
     })
   );
 
+  // Пока монетизация выключена, прайс-листы платформ не отдаются: платформа
+  // ничего не продаёт, и публичные цены только сбивают с толку.
   app.get(
     '/api/subscriptions/plans',
     wrap(async (_req, res) => {
-      res.json(await repository.listSubscriptionPlans());
+      const settings = await repository.getPlatformSettings();
+      res.json(settings.monetization_enabled ? await repository.listSubscriptionPlans() : []);
     })
   );
 
   app.get(
     '/api/promotions/types',
     wrap(async (_req, res) => {
-      res.json(await repository.listPromotionTypes());
+      const settings = await repository.getPlatformSettings();
+      res.json(settings.monetization_enabled ? await repository.listPromotionTypes() : []);
     })
   );
 

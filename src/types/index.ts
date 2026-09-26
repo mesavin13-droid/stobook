@@ -315,6 +315,15 @@ export interface PlatformSettings {
   booking_reminder_minutes: number;
   default_city: string;
   currency: string;
+  /**
+   * Включена ли монетизация платформы.
+   *
+   * Пока false, автосервисы работают без ограничений: пробный период не
+   * заканчивается, подписки и платное продвижение не предлагаются. Флаг
+   * переключается в админке, чтобы перейти на монетизацию позже, не меняя
+   * код. По умолчанию выключено: первую аудиторию набирают без оплаты.
+   */
+  monetization_enabled: boolean;
 }
 
 export interface AvailableSlot {
