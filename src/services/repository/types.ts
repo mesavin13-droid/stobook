@@ -120,6 +120,78 @@ export interface RegisterServiceCenterInput {
   mastersCount: number;
 }
 
+/**
+ * Owner owned child rows. The union is a whitelist: the postgres implementation
+ * refuses any other table name, so a caller cannot reach arbitrary SQL.
+ */
+export type OwnerScopedTable = 'service_center_services' | 'service_bays' | 'masters';
+
+export interface CreateCenterServiceInput {
+  serviceCenterId: string;
+  serviceId?: string | null;
+  customName: string;
+  customCategory: string;
+  price: number;
+  isFixedPrice: boolean;
+  durationMinutes: number;
+}
+
+export type CenterServicePatch = Partial<
+  Pick<
+    CreateCenterServiceInput,
+    'customName' | 'customCategory' | 'price' | 'isFixedPrice' | 'durationMinutes'
+  >
+> & { isActive?: boolean };
+
+export interface CreateBayInput {
+  serviceCenterId: string;
+  name: string;
+  bayType: string;
+}
+
+export type BayPatch = Partial<Pick<CreateBayInput, 'name' | 'bayType'>> & { isActive?: boolean };
+
+export interface MasterSchedule {
+  work_days: number[];
+  start: string;
+  end: string;
+}
+
+export interface CreateMasterInput {
+  serviceCenterId: string;
+  fullName: string;
+  phone?: string | null;
+  specialization?: string | null;
+  schedule?: MasterSchedule;
+}
+
+export type MasterPatch = Partial<Pick<CreateMasterInput, 'fullName' | 'phone' | 'specialization' | 'schedule'>> & {
+  isActive?: boolean;
+};
+
+export interface BusinessHoursEntry {
+  dayOfWeek: number;
+  openTime: string;
+  closeTime: string;
+  isClosed: boolean;
+}
+
+export type ServiceCenterProfilePatch = Partial<
+  Pick<
+    RegisterServiceCenterInput,
+    | 'name'
+    | 'description'
+    | 'address'
+    | 'latitude'
+    | 'longitude'
+    | 'phone'
+    | 'telegram'
+    | 'website'
+    | 'route_description'
+    | 'parking_description'
+  >
+>;
+
 export interface Repository {
   readonly kind: RepositoryKind;
   init(): Promise<void>;
@@ -153,6 +225,23 @@ export interface Repository {
   getServiceCenterCounts(): Promise<ServiceCenterCounts>;
   updateServiceCenterStatus(id: string, status: ServiceCenterStatus): Promise<ServiceCenter | null>;
   registerServiceCenter(input: RegisterServiceCenterInput): Promise<ServiceCenter>;
+
+  // Owner workspace. Every method below is scoped to a single service center and
+  // is called only after the API has verified that the caller owns that center,
+  // so the actor id exists purely for RLS attribution.
+  getServiceCenterByOwner(ownerId: string): Promise<ServiceCenter | null>;
+  getRowServiceCenterId(table: OwnerScopedTable, id: string): Promise<string | null>;
+  updateServiceCenterProfile(actorId: string, id: string, patch: ServiceCenterProfilePatch): Promise<ServiceCenter | null>;
+  createCenterService(actorId: string, input: CreateCenterServiceInput): Promise<ServiceCenterService>;
+  updateCenterService(actorId: string, id: string, patch: CenterServicePatch): Promise<ServiceCenterService | null>;
+  deleteCenterService(actorId: string, id: string): Promise<boolean>;
+  createBay(actorId: string, input: CreateBayInput): Promise<ServiceBay>;
+  updateBay(actorId: string, id: string, patch: BayPatch): Promise<ServiceBay | null>;
+  deleteBay(actorId: string, id: string): Promise<boolean>;
+  createMaster(actorId: string, input: CreateMasterInput): Promise<Master>;
+  updateMaster(actorId: string, id: string, patch: MasterPatch): Promise<Master | null>;
+  deleteMaster(actorId: string, id: string): Promise<boolean>;
+  replaceBusinessHours(actorId: string, serviceCenterId: string, entries: BusinessHoursEntry[]): Promise<BusinessHours[]>;
 
   getAvailabilityForService(serviceCenterId: string, serviceCenterServiceId: string, dateStr: string): Promise<AvailableSlot[]>;
 

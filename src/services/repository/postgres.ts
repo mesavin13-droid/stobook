@@ -32,18 +32,27 @@ import {
 import {
   DEFAULT_PLATFORM_SETTINGS,
   type AppointmentFilter,
+  type BayPatch,
   type BookingParams,
+  type BusinessHoursEntry,
+  type CenterServicePatch,
   type CompleteServiceParams,
+  type CreateBayInput,
+  type CreateCenterServiceInput,
+  type CreateMasterInput,
   type HistorySettingsPatch,
+  type MasterPatch,
   type MutationResult,
   type NewTelegramUserInput,
   type NewVehicleInput,
+  type OwnerScopedTable,
   type PushSubscriptionInput,
   type RegisterServiceCenterInput,
   type Repository,
   type RepositoryHealth,
   type RepositoryKind,
-  type ServiceCenterCounts
+  type ServiceCenterCounts,
+  type ServiceCenterProfilePatch
 } from './types.js';
 import {
   TERMINAL_STATUSES,
@@ -56,6 +65,7 @@ import {
 const PG_TYPE_DATE = 1082;
 const PG_TYPE_NUMERIC = 1700;
 const REMINDER_CLAIM_LIMIT = 200;
+const OWNER_SCOPED_TABLES = new Set<string>(['service_center_services', 'service_bays', 'masters']);
 
 types.setTypeParser(PG_TYPE_DATE, (value) => value);
 types.setTypeParser(PG_TYPE_NUMERIC, (value) => (value === null ? null : Number.parseFloat(value)));
@@ -771,6 +781,227 @@ export class PostgresRepository implements Repository {
     const created = await this.getServiceCenter(centerId);
     if (!created) throw new RepositoryError('REGISTER_FAILED', 'Не удалось создать автосервис');
     return created;
+  }
+
+  async getServiceCenterByOwner(ownerId: string): Promise<ServiceCenter | null> {
+    const { rows } = await this.pool.query(
+      'SELECT id FROM service_centers WHERE owner_id = $1 ORDER BY created_at ASC LIMIT 1',
+      [ownerId]
+    );
+    return rows[0] ? this.getServiceCenter(rows[0].id as string) : null;
+  }
+
+  async getRowServiceCenterId(table: OwnerScopedTable, id: string): Promise<string | null> {
+    if (!OWNER_SCOPED_TABLES.has(table)) {
+      throw new RepositoryError('INVALID_TABLE', `Недопустимая таблица: ${table}`);
+    }
+    const { rows } = await this.pool.query(`SELECT service_center_id FROM ${table} WHERE id = $1`, [id]);
+    return rows[0] ? (rows[0].service_center_id as string) : null;
+  }
+
+  async updateServiceCenterProfile(
+    actorId: string,
+    id: string,
+    patch: ServiceCenterProfilePatch
+  ): Promise<ServiceCenter | null> {
+    const columns: Record<keyof ServiceCenterProfilePatch, string> = {
+      name: 'name',
+      description: 'description',
+      address: 'address',
+      latitude: 'latitude',
+      longitude: 'longitude',
+      phone: 'phone',
+      telegram: 'telegram',
+      website: 'website',
+      route_description: 'route_description',
+      parking_description: 'parking_description'
+    };
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    for (const [key, value] of Object.entries(patch) as [keyof ServiceCenterProfilePatch, unknown][]) {
+      if (value === undefined) continue;
+      values.push(value);
+      assignments.push(`${columns[key]} = $${values.length}`);
+    }
+    if (assignments.length === 0) return this.getServiceCenter(id);
+    values.push(id);
+    const { rowCount } = await this.run(actorId, true, (client) =>
+      client.query(
+        `UPDATE service_centers SET ${assignments.join(', ')}, updated_at = NOW() WHERE id = $${values.length}`,
+        values
+      )
+    );
+    if (!rowCount) return null;
+    return this.getServiceCenter(id);
+  }
+
+  async createCenterService(actorId: string, input: CreateCenterServiceInput): Promise<ServiceCenterService> {
+    return this.run(actorId, true, async (client) => {
+      const { rows } = await client.query(
+        `INSERT INTO service_center_services (
+            service_center_id, service_id, custom_name, custom_category, price, is_fixed_price, duration_minutes, is_active
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+         RETURNING *`,
+        [
+          input.serviceCenterId,
+          input.serviceId ?? null,
+          input.customName,
+          input.customCategory,
+          input.price,
+          input.isFixedPrice,
+          input.durationMinutes
+        ]
+      );
+      return mapCenterService(rows[0]);
+    });
+  }
+
+  async updateCenterService(
+    actorId: string,
+    id: string,
+    patch: CenterServicePatch
+  ): Promise<ServiceCenterService | null> {
+    const columns: Record<string, string> = {
+      customName: 'custom_name',
+      customCategory: 'custom_category',
+      price: 'price',
+      isFixedPrice: 'is_fixed_price',
+      durationMinutes: 'duration_minutes',
+      isActive: 'is_active'
+    };
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    for (const [key, value] of Object.entries(patch) as [keyof CenterServicePatch, unknown][]) {
+      if (value === undefined) continue;
+      values.push(value);
+      assignments.push(`${columns[key]} = $${values.length}`);
+    }
+    if (assignments.length === 0) return this.getCenterService(id);
+    values.push(id);
+    const { rowCount } = await this.run(actorId, true, (client) =>
+      client.query(`UPDATE service_center_services SET ${assignments.join(', ')} WHERE id = $${values.length}`, values)
+    );
+    return rowCount ? this.getCenterService(id) : null;
+  }
+
+  async deleteCenterService(actorId: string, id: string): Promise<boolean> {
+    const { rowCount } = await this.run(actorId, true, (client) =>
+      client.query('DELETE FROM service_center_services WHERE id = $1', [id])
+    );
+    return Boolean(rowCount);
+  }
+
+  async createBay(actorId: string, input: CreateBayInput): Promise<ServiceBay> {
+    return this.run(actorId, true, async (client) => {
+      const { rows } = await client.query(
+        'INSERT INTO service_bays (service_center_id, name, bay_type, is_active) VALUES ($1, $2, $3, TRUE) RETURNING *',
+        [input.serviceCenterId, input.name, input.bayType]
+      );
+      return mapBay(rows[0]);
+    });
+  }
+
+  async updateBay(actorId: string, id: string, patch: BayPatch): Promise<ServiceBay | null> {
+    const columns: Record<string, string> = { name: 'name', bayType: 'bay_type', isActive: 'is_active' };
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    for (const [key, value] of Object.entries(patch) as [keyof BayPatch, unknown][]) {
+      if (value === undefined) continue;
+      values.push(value);
+      assignments.push(`${columns[key]} = $${values.length}`);
+    }
+    if (assignments.length === 0) return this.getBay(id);
+    values.push(id);
+    const { rowCount } = await this.run(actorId, true, (client) =>
+      client.query(`UPDATE service_bays SET ${assignments.join(', ')} WHERE id = $${values.length}`, values)
+    );
+    return rowCount ? this.getBay(id) : null;
+  }
+
+  async deleteBay(actorId: string, id: string): Promise<boolean> {
+    const { rowCount } = await this.run(actorId, true, (client) => client.query('DELETE FROM service_bays WHERE id = $1', [id]));
+    return Boolean(rowCount);
+  }
+
+  async createMaster(actorId: string, input: CreateMasterInput): Promise<Master> {
+    return this.run(actorId, true, async (client) => {
+      const { rows } = await client.query(
+        `INSERT INTO masters (service_center_id, full_name, phone, specialization, is_active, schedule_json)
+         VALUES ($1, $2, $3, $4, TRUE, $5::jsonb)
+         RETURNING *`,
+        [
+          input.serviceCenterId,
+          input.fullName,
+          input.phone ?? null,
+          input.specialization ?? null,
+          JSON.stringify(input.schedule ?? DEFAULT_MASTER_SCHEDULE)
+        ]
+      );
+      return mapMaster(rows[0]);
+    });
+  }
+
+  async updateMaster(actorId: string, id: string, patch: MasterPatch): Promise<Master | null> {
+    const columns: Record<string, string> = {
+      fullName: 'full_name',
+      phone: 'phone',
+      specialization: 'specialization',
+      schedule: 'schedule_json',
+      isActive: 'is_active'
+    };
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    for (const [key, value] of Object.entries(patch) as [keyof MasterPatch, unknown][]) {
+      const column = columns[key];
+      if (value === undefined || !column) continue;
+      values.push(key === 'schedule' ? JSON.stringify(value) : value);
+      assignments.push(`${column} = $${values.length}${key === 'schedule' ? '::jsonb' : ''}`);
+    }
+    if (assignments.length === 0) return this.getMaster(id);
+    values.push(id);
+    const { rowCount } = await this.run(actorId, true, (client) =>
+      client.query(`UPDATE masters SET ${assignments.join(', ')} WHERE id = $${values.length}`, values)
+    );
+    return rowCount ? this.getMaster(id) : null;
+  }
+
+  async deleteMaster(actorId: string, id: string): Promise<boolean> {
+    const { rowCount } = await this.run(actorId, true, (client) => client.query('DELETE FROM masters WHERE id = $1', [id]));
+    return Boolean(rowCount);
+  }
+
+  async replaceBusinessHours(
+    actorId: string,
+    serviceCenterId: string,
+    entries: BusinessHoursEntry[]
+  ): Promise<BusinessHours[]> {
+    await this.run(actorId, true, async (client) => {
+      for (const entry of entries) {
+        await client.query(
+          `INSERT INTO business_hours (service_center_id, day_of_week, open_time, close_time, is_closed)
+           VALUES ($1, $2, $3::time, $4::time, $5)
+           ON CONFLICT (service_center_id, day_of_week) DO UPDATE
+             SET open_time = EXCLUDED.open_time, close_time = EXCLUDED.close_time, is_closed = EXCLUDED.is_closed`,
+          [serviceCenterId, entry.dayOfWeek, entry.openTime, entry.closeTime, entry.isClosed]
+        );
+      }
+    });
+    return this.listBusinessHours(serviceCenterId);
+  }
+
+  private async getCenterService(id: string): Promise<ServiceCenterService | null> {
+    const { rows } = await this.pool.query('SELECT * FROM service_center_services WHERE id = $1', [id]);
+    return rows[0] ? mapCenterService(rows[0]) : null;
+  }
+
+  private async getBay(id: string): Promise<ServiceBay | null> {
+    const { rows } = await this.pool.query('SELECT * FROM service_bays WHERE id = $1', [id]);
+    return rows[0] ? mapBay(rows[0]) : null;
+  }
+
+  private async getMaster(id: string): Promise<Master | null> {
+    const { rows } = await this.pool.query('SELECT * FROM masters WHERE id = $1', [id]);
+    return rows[0] ? mapMaster(rows[0]) : null;
   }
 
   private async loadAvailabilityInputs(

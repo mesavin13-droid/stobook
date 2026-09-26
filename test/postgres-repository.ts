@@ -707,6 +707,86 @@ async function testRoleManagement() {
   check('removed account is demoted', demoted?.role === 'CUSTOMER', String(demoted?.role));
 }
 
+async function testOwnerWorkspace() {
+  console.log('\n--- OWNER WORKSPACE ---');
+
+  const hoursWrite = new FakeDatabase([
+    [/DELETE FROM business_hours WHERE service_center_id/, () => ({ rowCount: 7 })],
+    [/INSERT INTO business_hours/, () => ({ rows: [{ ...HOURS_ROWS[1], open_time: '08:00:00' }] })],
+    [/^SELECT \* FROM business_hours WHERE service_center_id/, () => ({ rows: HOURS_ROWS })]
+  ]);
+  const replaced = await repositoryFor(hoursWrite).replaceBusinessHours(OWNER, CENTER, [
+    { dayOfWeek: 1, openTime: '08:00', closeTime: '20:00', isClosed: false }
+  ]);
+  const replaceQuery = hoursWrite.find(/INSERT INTO business_hours/);
+  check('weekly schedule is written as json rows', replaceQuery !== undefined && replaced.length === 7);
+  check(
+    'schedule values are passed as json',
+    replaceQuery !== undefined && replaceQuery.params.includes('08:00'),
+    JSON.stringify(replaceQuery?.params)
+  );
+  check('schedule writes run in the trusted server context', hoursWrite.find(/stobook\.server_context/) !== undefined);
+
+  const masterSchedule = new FakeDatabase([
+    [/UPDATE masters SET/, () => ({ rowCount: 1 })],
+    [/^SELECT \* FROM masters WHERE id = \$1$/, () => ({ rows: [{ ...MASTERS_ROWS[0], schedule_json: { start: '09:30' } }] })]
+  ]);
+  const updatedMaster = await repositoryFor(masterSchedule).updateMaster(OWNER, MASTER, {
+    schedule: { work_days: [1, 2, 3, 4, 5, 6], start: '09:30', end: '21:00' }
+  });
+  const masterQuery = masterSchedule.find(/UPDATE masters SET/);
+  check(
+    'master schedule patch targets schedule_json',
+    masterQuery !== undefined && /schedule_json = \$1::jsonb/.test(masterQuery.sql),
+    masterQuery?.sql
+  );
+  check('master schedule patch is serialized as json', masterQuery !== undefined && String(masterQuery.params[0]).includes('09:30'));
+  check('updated master is returned', updatedMaster?.schedule_json?.start === '09:30', JSON.stringify(updatedMaster?.schedule_json));
+
+  const servicePatch = new FakeDatabase([
+    [/UPDATE service_center_services SET/, () => ({ rowCount: 1 })],
+    [/^SELECT \* FROM service_center_services WHERE id = \$1$/, () => ({ rows: [{ ...SERVICE_ROW, price: '1900.00' }] })]
+  ]);
+  const updatedService = await repositoryFor(servicePatch).updateCenterService(OWNER, SERVICE, {
+    price: 1900,
+    durationMinutes: 60
+  });
+  const serviceQuery = servicePatch.find(/UPDATE service_center_services SET/);
+  check(
+    'service patch maps fields to columns',
+    serviceQuery !== undefined && /price = \$1/.test(serviceQuery.sql) && /duration_minutes = \$2/.test(serviceQuery.sql),
+    serviceQuery?.sql
+  );
+  check('service patch returns the new price', updatedService?.price === 1900, String(updatedService?.price));
+
+  const bayPatch = new FakeDatabase([
+    [/UPDATE service_bays SET/, () => ({ rowCount: 1 })],
+    [/^SELECT \* FROM service_bays WHERE id = \$1$/, () => ({ rows: [{ ...BAYS_ROWS[0], name: 'Стенд №1' }] })]
+  ]);
+  const updatedBay = await repositoryFor(bayPatch).updateBay(OWNER, BAY, { name: 'Стенд №1' });
+  check('bay patch returns the new name', updatedBay?.name === 'Стенд №1', String(updatedBay?.name));
+
+  const rowOwner = new FakeDatabase([[/SELECT service_center_id FROM/, () => ({ rows: [{ service_center_id: CENTER }] })]]);
+  const rowCenterId = await repositoryFor(rowOwner).getRowServiceCenterId('service_center_services', SERVICE);
+  check('child row center lookup returns the parent center', rowCenterId === CENTER, String(rowCenterId));
+  check('child row center lookup reads the center id column', /SELECT service_center_id FROM service_center_services WHERE id = \$1/.test(rowOwner.queries[0].sql), rowOwner.queries[0].sql);
+
+  const noRow = new FakeDatabase([[/SELECT service_center_id FROM/, () => ({ rows: [] })]]);
+  check('missing child row resolves to null', (await repositoryFor(noRow).getRowServiceCenterId('masters', MASTER)) === null);
+
+  const ownCenter = new FakeDatabase([
+    [/SELECT id FROM service_centers WHERE owner_id/, () => ({ rows: [{ id: CENTER }] })],
+    [/FROM service_centers sc/, () => ({ rows: [CENTER_ROW] })]
+  ]);
+  const resolved = await repositoryFor(ownCenter).getServiceCenterByOwner(OWNER);
+  check('owner center is resolved from the profile', resolved?.id === CENTER, String(resolved?.id));
+  check(
+    'owner center lookup filters by owner',
+    /WHERE owner_id = \$1/.test(ownCenter.queries[0].sql),
+    ownCenter.queries[0].sql
+  );
+}
+
 async function main() {
   console.log('STOBOOK PostgreSQL repository tests (mocked pool)');
   await testBooking();
@@ -715,6 +795,7 @@ async function main() {
   await testMappingAndModeration();
   await testReminderCron();
   await testRoleManagement();
+  await testOwnerWorkspace();
 
   console.log('\n========================================');
   console.log(`PASSED: ${passed}`);

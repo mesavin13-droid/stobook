@@ -219,6 +219,17 @@ export const ScreenHome: React.FC<ScreenHomeProps> = ({
               </div>
             </div>
           ))}
+          {serviceCenters.length === 0 && (
+            <div className="bg-white rounded-[18px] border border-dashed border-[#E1E4E6] p-6 text-center space-y-1">
+              <p className="text-sm font-extrabold text-[#111315]">Автосервисов пока нет</p>
+              <p className="text-xs text-[#70777D]">
+                Каталог наполняется, как только сервисы пройдут модерацию. Можно описать проблему — мы подберём мастеров.
+              </p>
+              <Button variant="secondary" className="mt-2" onClick={() => onOpenSearch()}>
+                Подобрать сервис
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>

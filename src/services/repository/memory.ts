@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   Appointment,
+  BusinessHours,
   Master,
   PlatformSettings,
   Profile,
@@ -28,18 +29,27 @@ import {
 } from './defaults.js';
 import type {
   AppointmentFilter,
+  BayPatch,
   BookingParams,
+  BusinessHoursEntry,
+  CenterServicePatch,
   CompleteServiceParams,
+  CreateBayInput,
+  CreateCenterServiceInput,
+  CreateMasterInput,
   HistorySettingsPatch,
+  MasterPatch,
   MutationResult,
   NewTelegramUserInput,
   NewVehicleInput,
+  OwnerScopedTable,
   PushSubscriptionInput,
   RegisterServiceCenterInput,
   Repository,
   RepositoryHealth,
   RepositoryKind,
-  ServiceCenterCounts
+  ServiceCenterCounts,
+  ServiceCenterProfilePatch
 } from './types.js';
 
 function isBookableServiceCenter(serviceCenter: { status: string; trial_ends_at?: string }): boolean {
@@ -255,6 +265,148 @@ export class MemoryRepository implements Repository {
     }
 
     return newCenter;
+  }
+
+  async getServiceCenterByOwner(ownerId: string): Promise<ServiceCenter | null> {
+    return store.serviceCenters.find((center) => center.owner_id === ownerId) ?? null;
+  }
+
+  async getRowServiceCenterId(table: OwnerScopedTable, id: string): Promise<string | null> {
+    const rows =
+      table === 'service_center_services' ? store.services : table === 'service_bays' ? store.bays : store.masters;
+    return rows.find((row) => row.id === id)?.service_center_id ?? null;
+  }
+
+  async updateServiceCenterProfile(
+    _actorId: string,
+    id: string,
+    patch: ServiceCenterProfilePatch
+  ): Promise<ServiceCenter | null> {
+    const center = store.serviceCenters.find((item) => item.id === id);
+    if (!center) return null;
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined) continue;
+      (center as unknown as Record<string, unknown>)[key] = value;
+    }
+    center.updated_at = new Date().toISOString();
+    return center;
+  }
+
+  async createCenterService(_actorId: string, input: CreateCenterServiceInput): Promise<ServiceCenterService> {
+    const service: ServiceCenterService = {
+      id: randomUUID(),
+      service_center_id: input.serviceCenterId,
+      service_id: input.serviceId ?? undefined,
+      custom_name: input.customName,
+      custom_category: input.customCategory,
+      price: input.price,
+      is_fixed_price: input.isFixedPrice,
+      duration_minutes: input.durationMinutes,
+      is_active: true,
+      created_at: new Date().toISOString()
+    };
+    store.services.push(service);
+    return service;
+  }
+
+  async updateCenterService(
+    _actorId: string,
+    id: string,
+    patch: CenterServicePatch
+  ): Promise<ServiceCenterService | null> {
+    const service = store.services.find((item) => item.id === id);
+    if (!service) return null;
+    if (patch.customName !== undefined) service.custom_name = patch.customName;
+    if (patch.customCategory !== undefined) service.custom_category = patch.customCategory;
+    if (patch.price !== undefined) service.price = patch.price;
+    if (patch.isFixedPrice !== undefined) service.is_fixed_price = patch.isFixedPrice;
+    if (patch.durationMinutes !== undefined) service.duration_minutes = patch.durationMinutes;
+    if (patch.isActive !== undefined) service.is_active = patch.isActive;
+    return service;
+  }
+
+  async deleteCenterService(_actorId: string, id: string): Promise<boolean> {
+    const index = store.services.findIndex((item) => item.id === id);
+    if (index === -1) return false;
+    store.services.splice(index, 1);
+    return true;
+  }
+
+  async createBay(_actorId: string, input: CreateBayInput): Promise<ServiceBay> {
+    const bay: ServiceBay = {
+      id: randomUUID(),
+      service_center_id: input.serviceCenterId,
+      name: input.name,
+      bay_type: input.bayType,
+      is_active: true
+    };
+    store.bays.push(bay);
+    return bay;
+  }
+
+  async updateBay(_actorId: string, id: string, patch: BayPatch): Promise<ServiceBay | null> {
+    const bay = store.bays.find((item) => item.id === id);
+    if (!bay) return null;
+    if (patch.name !== undefined) bay.name = patch.name;
+    if (patch.bayType !== undefined) bay.bay_type = patch.bayType;
+    if (patch.isActive !== undefined) bay.is_active = patch.isActive;
+    return bay;
+  }
+
+  async deleteBay(_actorId: string, id: string): Promise<boolean> {
+    const index = store.bays.findIndex((item) => item.id === id);
+    if (index === -1) return false;
+    store.bays.splice(index, 1);
+    return true;
+  }
+
+  async createMaster(_actorId: string, input: CreateMasterInput): Promise<Master> {
+    const master: Master = {
+      id: randomUUID(),
+      service_center_id: input.serviceCenterId,
+      full_name: input.fullName,
+      phone: input.phone ?? undefined,
+      specialization: input.specialization ?? undefined,
+      is_active: true,
+      schedule_json: input.schedule ?? { ...DEFAULT_MASTER_SCHEDULE, work_days: [...DEFAULT_MASTER_SCHEDULE.work_days] },
+      created_at: new Date().toISOString()
+    };
+    store.masters.push(master);
+    return master;
+  }
+
+  async updateMaster(_actorId: string, id: string, patch: MasterPatch): Promise<Master | null> {
+    const master = store.masters.find((item) => item.id === id);
+    if (!master) return null;
+    if (patch.fullName !== undefined) master.full_name = patch.fullName;
+    if (patch.phone !== undefined) master.phone = patch.phone ?? undefined;
+    if (patch.specialization !== undefined) master.specialization = patch.specialization ?? undefined;
+    if (patch.isActive !== undefined) master.is_active = patch.isActive;
+    if (patch.schedule !== undefined) master.schedule_json = patch.schedule;
+    return master;
+  }
+
+  async deleteMaster(_actorId: string, id: string): Promise<boolean> {
+    const index = store.masters.findIndex((item) => item.id === id);
+    if (index === -1) return false;
+    store.masters.splice(index, 1);
+    return true;
+  }
+
+  async replaceBusinessHours(
+    _actorId: string,
+    serviceCenterId: string,
+    entries: BusinessHoursEntry[]
+  ): Promise<BusinessHours[]> {
+    for (const entry of entries) {
+      const existing = store.businessHours.find(
+        (hours) => hours.service_center_id === serviceCenterId && hours.day_of_week === entry.dayOfWeek
+      );
+      const next = { open_time: entry.openTime, close_time: entry.closeTime, is_closed: entry.isClosed };
+      if (existing) Object.assign(existing, next);
+      else store.businessHours.push({ service_center_id: serviceCenterId, day_of_week: entry.dayOfWeek, ...next });
+    }
+    return this.listBusinessHours(serviceCenterId);
   }
 
   async getAvailabilityForService(serviceCenterId: string, serviceCenterServiceId: string, dateStr: string) {

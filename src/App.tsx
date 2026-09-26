@@ -21,6 +21,7 @@ import { ScreenCarProfile } from './components/screens/ScreenCarProfile';
 import { ScreenOwnerDashboard } from './components/screens/ScreenOwnerDashboard';
 import { ScreenOwnerSchedule } from './components/screens/ScreenOwnerSchedule';
 import { ScreenOwnerSettings } from './components/screens/ScreenOwnerSettings';
+import { ScreenOwnerManage } from './components/screens/ScreenOwnerManage';
 import { ScreenOwnerRegister } from './components/screens/ScreenOwnerRegister';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 
@@ -43,6 +44,7 @@ export type ScreenId =
   | 'owner_dashboard'
   | 'owner_schedule'
   | 'owner_settings'
+  | 'owner_manage'
   | 'owner_register'
   | 'admin_dashboard';
 
@@ -441,8 +443,12 @@ export default function App() {
             onBackToCustomer={() => setCurrentScreen('profile')}
             onOpenSchedule={() => setCurrentScreen('owner_schedule')}
             onOpenSettings={() => setCurrentScreen('owner_settings')}
+            onOpenManage={() => setCurrentScreen('owner_manage')}
           />
         );
+
+      case 'owner_manage':
+        return <ScreenOwnerManage onBack={() => setCurrentScreen('owner_dashboard')} />;
 
       case 'owner_register':
         return (

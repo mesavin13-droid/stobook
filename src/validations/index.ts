@@ -96,6 +96,91 @@ export const serviceCenterRegisterSchema = z.object({
 
 export type ServiceCenterRegisterInput = z.infer<typeof serviceCenterRegisterSchema>;
 
+const timeSchema = z
+  .string()
+  .trim()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Время должно быть в формате ЧЧ:ММ');
+
+export const ownerCenterProfileSchema = z
+  .object({
+    name: z.string().trim().min(2, 'Название должно содержать минимум 2 символа').max(120).optional(),
+    description: z.string().trim().max(5000).optional(),
+    address: z.string().trim().min(5, 'Укажите адрес автосервиса').max(500).optional(),
+    latitude: z.coerce.number().finite().min(50).max(60).optional(),
+    longitude: z.coerce.number().finite().min(70).max(90).optional(),
+    phone: z.string().trim().min(6, 'Укажите контактный телефон').max(40).optional(),
+    telegram: optionalText(80),
+    website: z.union([z.string().url().max(2048), z.literal('')]).optional(),
+    route_description: optionalText(1000),
+    parking_description: optionalText(1000)
+  })
+  .refine((value) => Object.keys(value).length > 0, 'Нет полей для сохранения');
+
+export const ownerServiceCreateSchema = z.object({
+  customName: z.string().trim().min(2, 'Название услуги слишком короткое').max(120),
+  customCategory: z.string().trim().min(2, 'Укажите категорию услуги').max(80),
+  price: z.coerce.number().min(0, 'Цена не может быть отрицательной').max(10_000_000),
+  isFixedPrice: z.coerce.boolean().optional(),
+  durationMinutes: z.coerce.number().int().min(15, 'Минимальная длительность 15 минут').max(1440)
+});
+
+export const ownerServicePatchSchema = ownerServiceCreateSchema
+  .partial()
+  .extend({ isActive: z.coerce.boolean().optional() })
+  .refine((value) => Object.keys(value).length > 0, 'Нет полей для сохранения');
+
+export const bayCreateSchema = z.object({
+  name: z.string().trim().min(1, 'Укажите название поста').max(80),
+  bayType: z
+    .string()
+    .trim()
+    .min(1)
+    .max(40)
+    .default('lift')
+});
+
+export const bayPatchSchema = bayCreateSchema
+  .partial()
+  .extend({ isActive: z.coerce.boolean().optional() })
+  .refine((value) => Object.keys(value).length > 0, 'Нет полей для сохранения');
+
+export const masterCreateSchema = z.object({
+  fullName: z.string().trim().min(2, 'Укажите имя мастера').max(120),
+  phone: optionalText(40),
+  specialization: optionalText(120),
+  schedule: z
+    .object({
+      work_days: z.array(z.coerce.number().int().min(0).max(6)).min(1, 'Выберите хотя бы один день').max(7),
+      start: timeSchema,
+      end: timeSchema
+    })
+    .optional()
+});
+
+export const masterPatchSchema = masterCreateSchema
+  .partial()
+  .extend({ isActive: z.coerce.boolean().optional() })
+  .refine((value) => Object.keys(value).length > 0, 'Нет полей для сохранения');
+
+export const businessHoursSchema = z.object({
+  hours: z
+    .array(
+      z
+        .object({
+          dayOfWeek: z.coerce.number().int().min(0, 'Некорректный день недели').max(6),
+          openTime: timeSchema,
+          closeTime: timeSchema,
+          isClosed: z.coerce.boolean()
+        })
+        .refine((entry) => entry.isClosed || entry.openTime < entry.closeTime, {
+          message: 'Время открытия должно быть раньше времени закрытия',
+          path: ['closeTime']
+        })
+    )
+    .min(1, 'Передайте расписание хотя бы на один день')
+    .max(7)
+});
+
 export const platformSettingsSchema = z.object({
   trial_days: z.coerce.number().int().min(1).max(365),
   booking_reminder_minutes: z.coerce.number().int().min(10).max(1440),

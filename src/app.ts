@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import type { AppEnv } from './config/env.js';
+import type { ServiceCenter } from './types/index.js';
 import { verifyInitData } from './lib/telegram/index.js';
 import {
   ADMIN_SESSION_TTL_SECONDS,
@@ -12,13 +13,21 @@ import {
   type AuthContext
 } from './lib/session.js';
 import { isBookableServiceCenter } from './services/repository/rules.js';
-import type { Repository } from './services/repository/types.js';
+import type { OwnerScopedTable, Repository } from './services/repository/types.js';
 import { DEFAULT_CENTER_PHOTO } from './services/repository/defaults.js';
 import {
   appointmentStatusUpdateSchema,
   availabilityQuerySchema,
+  bayCreateSchema,
+  bayPatchSchema,
   bookingCreateSchema,
+  businessHoursSchema,
   completeServiceSchema,
+  masterCreateSchema,
+  masterPatchSchema,
+  ownerCenterProfileSchema,
+  ownerServiceCreateSchema,
+  ownerServicePatchSchema,
   platformSettingsSchema,
   pushSubscriptionSchema,
   revokeAccessSchema,
@@ -759,10 +768,297 @@ export function createApp({ repository, env }: AppDependencies): Express {
       // The owner profile is promoted inside the registration transaction, so
       // the client can immediately switch to the owner cabinet.
       const profile = await repository.promoteToServiceOwner(ownerId);
-
       res.status(201).json({ success: true, center, profile });
     })
   );
+
+  // Owner workspace. The owner never passes a service center id from the client:
+  // it is resolved from the session, so an owner physically cannot edit a
+  // competitor's catalog even with a tampered request. Child routes reuse the
+  // `:id` param for their own row, so it must never be read as a center id here.
+  async function resolveOwnedCenter(req: Request, res: Response): Promise<ServiceCenter | null> {
+    const context = getRequestAuth(req);
+    const center = await repository.getServiceCenterByOwner(context.profile.id);
+    if (!center) {
+      res.status(404).json({ error: 'Автосервис не найден' });
+      return null;
+    }
+    if (!(await canManageServiceCenter(center.id, context))) {
+      res.status(403).json({ error: 'Недостаточно прав' });
+      return null;
+    }
+    return center;
+  }
+
+  /**
+   * Child rows (services, bays, masters) are addressed by their own id, so the
+   * parent center has to be re-checked before every write. A mismatch is
+   * reported as "not found" so the API never confirms that a row exists in a
+   * competitor's catalog.
+   */
+  async function isOwnCenterRow(table: OwnerScopedTable, id: string, centerId: string): Promise<boolean> {
+    const rowCenterId = await repository.getRowServiceCenterId(table, id);
+    return Boolean(rowCenterId && rowCenterId === centerId);
+  }
+
+  app.get(
+    '/api/owner/service-center',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      const [services, bays, masters, businessHours] = await Promise.all([
+        repository.listServiceCenterServices(center.id),
+        repository.listBays(center.id),
+        repository.listMasters(center.id),
+        repository.listBusinessHours(center.id)
+      ]);
+      res.json({ center, services, bays, masters, businessHours });
+    })
+  );
+
+  app.patch(
+    '/api/owner/service-center',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = ownerCenterProfileSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных автосервиса' });
+        return;
+      }
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      const updated = await repository.updateServiceCenterProfile(getRequestAuth(req).profile.id, center.id, parse.data);
+      res.json({ success: true, center: updated });
+    })
+  );
+
+  app.post(
+    '/api/owner/services',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = ownerServiceCreateSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных услуги' });
+        return;
+      }
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      const service = await repository.createCenterService(getRequestAuth(req).profile.id, {
+        serviceCenterId: center.id,
+        customName: parse.data.customName,
+        customCategory: parse.data.customCategory,
+        price: parse.data.price,
+        isFixedPrice: parse.data.isFixedPrice ?? false,
+        durationMinutes: parse.data.durationMinutes
+      });
+      res.status(201).json({ success: true, service });
+    })
+  );
+
+  app.patch(
+    '/api/owner/services/:id',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = ownerServicePatchSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных услуги' });
+        return;
+      }
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      if (!(await isOwnCenterRow('service_center_services', req.params.id, center.id))) {
+        res.status(404).json({ error: 'Услуга не найдена' });
+        return;
+      }
+      const service = await repository.updateCenterService(getRequestAuth(req).profile.id, req.params.id, parse.data);
+      if (!service) {
+        res.status(404).json({ error: 'Услуга не найдена' });
+        return;
+      }
+      res.json({ success: true, service });
+    })
+  );
+
+  app.delete(
+    '/api/owner/services/:id',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      if (!(await isOwnCenterRow('service_center_services', req.params.id, center.id))) {
+        res.status(404).json({ error: 'Услуга не найдена' });
+        return;
+      }
+      const deleted = await repository.deleteCenterService(getRequestAuth(req).profile.id, req.params.id);
+      res.json({ success: deleted });
+    })
+  );
+
+  app.post(
+    '/api/owner/bays',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = bayCreateSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных поста' });
+        return;
+      }
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      const bay = await repository.createBay(getRequestAuth(req).profile.id, {
+        serviceCenterId: center.id,
+        name: parse.data.name,
+        bayType: parse.data.bayType
+      });
+      res.status(201).json({ success: true, bay });
+    })
+  );
+
+  app.patch(
+    '/api/owner/bays/:id',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = bayPatchSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных поста' });
+        return;
+      }
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      if (!(await isOwnCenterRow('service_bays', req.params.id, center.id))) {
+        res.status(404).json({ error: 'Пост не найден' });
+        return;
+      }
+      const bay = await repository.updateBay(getRequestAuth(req).profile.id, req.params.id, parse.data);
+      if (!bay) {
+        res.status(404).json({ error: 'Пост не найден' });
+        return;
+      }
+      res.json({ success: true, bay });
+    })
+  );
+
+  app.delete(
+    '/api/owner/bays/:id',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      if (!(await isOwnCenterRow('service_bays', req.params.id, center.id))) {
+        res.status(404).json({ error: 'Пост не найден' });
+        return;
+      }
+      const deleted = await repository.deleteBay(getRequestAuth(req).profile.id, req.params.id);
+      res.json({ success: deleted });
+    })
+  );
+
+  app.post(
+    '/api/owner/masters',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = masterCreateSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных мастера' });
+        return;
+      }
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      const master = await repository.createMaster(getRequestAuth(req).profile.id, {
+        serviceCenterId: center.id,
+        fullName: parse.data.fullName,
+        phone: parse.data.phone,
+        specialization: parse.data.specialization,
+        schedule: parse.data.schedule
+      });
+      res.status(201).json({ success: true, master });
+    })
+  );
+
+  app.patch(
+    '/api/owner/masters/:id',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = masterPatchSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных мастера' });
+        return;
+      }
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      if (!(await isOwnCenterRow('masters', req.params.id, center.id))) {
+        res.status(404).json({ error: 'Мастер не найден' });
+        return;
+      }
+      const master = await repository.updateMaster(getRequestAuth(req).profile.id, req.params.id, parse.data);
+      if (!master) {
+        res.status(404).json({ error: 'Мастер не найден' });
+        return;
+      }
+      res.json({ success: true, master });
+    })
+  );
+
+  app.delete(
+    '/api/owner/masters/:id',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      if (!(await isOwnCenterRow('masters', req.params.id, center.id))) {
+        res.status(404).json({ error: 'Мастер не найден' });
+        return;
+      }
+      const deleted = await repository.deleteMaster(getRequestAuth(req).profile.id, req.params.id);
+      res.json({ success: deleted });
+    })
+  );
+
+  app.put(
+    '/api/owner/business-hours',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = businessHoursSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных расписания' });
+        return;
+      }
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      const businessHours = await repository.replaceBusinessHours(
+        getRequestAuth(req).profile.id,
+        center.id,
+        parse.data.hours
+      );
+      res.json({ success: true, businessHours });
+    })
+  );
+
+  app.get(
+    '/api/owner/appointments',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      const appointments = await repository.listAppointments({ serviceCenterId: center.id });
+      res.json({ center, appointments });
+    })
+  );
+
 
   app.get(
     '/api/admin/metrics',

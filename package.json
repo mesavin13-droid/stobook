@@ -14,6 +14,7 @@
     "test:http": "tsx test/rbac-http.ts",
     "test:postgres": "tsx test/postgres-repository.ts",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:clear-demo": "tsx scripts/clear-demo-data.ts",
     "db:schedule-reminders": "tsx scripts/schedule-reminders.ts"
   },
   "dependencies": {

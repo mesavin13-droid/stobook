@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+﻿import { createHmac } from 'node:crypto';
 import { createSessionToken } from '../src/lib/session';
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:3000';
@@ -11,6 +11,60 @@ const SERVICE = 'f0010000-0000-0000-0000-000000000001';
 
 let passed = 0;
 let failed = 0;
+
+// Everything the suite creates is tracked so the run leaves the database as it
+// found it, even when it is executed against the shared production database.
+const createdCenterIds = new Set<string>();
+const createdProfileIds = new Set<string>();
+
+function trackCreated<T extends { json: any }>(res: T): T {
+  const centerId = res.json?.center?.id;
+  if (typeof centerId === 'string') createdCenterIds.add(centerId);
+  const profileId = res.json?.profile?.id;
+  if (typeof profileId === 'string' && !profileId.startsWith('a1') && !profileId.startsWith('a2') && !profileId.startsWith('a9')) {
+    createdProfileIds.add(profileId);
+  }
+  return res;
+}
+
+async function teardown() {
+  if (!process.env.DATABASE_URL) {
+    console.log('  SKIP: teardown needs DATABASE_URL');
+    return;
+  }
+  if (process.env.E2E_OWNER_PROFILE) createdProfileIds.add(process.env.E2E_OWNER_PROFILE);
+  if (process.env.E2E_OTHER_OWNER_PROFILE) createdProfileIds.add(process.env.E2E_OTHER_OWNER_PROFILE);
+  if (createdCenterIds.size === 0 && createdProfileIds.size === 0) return;
+
+  const { default: pg } = await import('pg');
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    for (const id of createdCenterIds) {
+      await client.query('DELETE FROM service_centers WHERE id = $1', [id]);
+    }
+    if (createdProfileIds.size > 0) {
+      // Centers first: service_centers.owner_id references the profile.
+      const profileIds = Array.from(createdProfileIds);
+      await client.query('DELETE FROM service_centers WHERE owner_id = ANY($1::uuid[])', [profileIds]);
+      await client.query('DELETE FROM profiles WHERE id = ANY($1::uuid[])', [profileIds]);
+    }
+    // The suite books the seeded center with the seeded customer; those rows and
+    // the access grants they create must not survive the run either.
+    await client.query(
+      `DELETE FROM appointments
+        WHERE service_center_id = $1 AND customer_id = $2`,
+      [CENTER, CUSTOMER]
+    );
+    const leftovers = await client.query(
+      `SELECT count(*)::int AS count FROM service_centers
+        WHERE name LIKE 'СТО «E2E»%' OR name = 'Чужое СТО'`
+    );
+    check('teardown removed every center the suite created', leftovers.rows[0].count === 0, `left ${leftovers.rows[0].count}`);
+  } finally {
+    await client.end();
+  }
+}
 
 function check(name: string, condition: boolean, detail = '') {
   if (condition) {
@@ -126,7 +180,7 @@ async function main() {
     var bookingId = booking.json?.appointment?.id;
 
     const grantAfterBooking = await api(`/api/vehicles/${VEHICLE}/access`, { token: customerToken });
-    const activeGrants: any[] = grantAfterBooking.json || [];
+    const activeGrants: any[] = Array.isArray(grantAfterBooking.json) ? grantAfterBooking.json : [];
     const grantForBooking = activeGrants.find((g) => g.appointment_id === bookingId);
     check('booking grants center history access', grantAfterBooking.status === 200 && Boolean(grantForBooking) && !grantForBooking.revoked_at, `got ${grantAfterBooking.status} ${activeGrants.length}`);
 
@@ -211,7 +265,7 @@ async function main() {
   const ownerAdmin = await api('/api/admin/metrics', { token: ownerToken });
   check('owner blocked from admin metrics', ownerAdmin.status === 403, `got ${ownerAdmin.status}`);
 
-  const ownerRegister = await api('/api/service-centers/register', {
+  const ownerRegister = trackCreated(await api('/api/service-centers/register', {
     method: 'POST',
     token: ownerToken,
     body: {
@@ -224,7 +278,7 @@ async function main() {
       baysCount: 1,
       mastersCount: 1,
     },
-  });
+  }));
   check('owner can register service center', ownerRegister.status === 200 || ownerRegister.status === 201, `got ${ownerRegister.status} ${JSON.stringify(ownerRegister.json)?.slice(0, 100)}`);
 
   const ownerVehicles = await api('/api/vehicles', { token: ownerToken });
@@ -255,10 +309,10 @@ async function main() {
     const stamp = Date.now();
     const plainTelegramId = 555000100 + (stamp % 900);
 
-    const plainLogin = await api('/api/telegram/verify', {
+    const plainLogin = trackCreated(await api('/api/telegram/verify', {
       method: 'POST',
       body: { initData: buildInitData(botToken, { id: plainTelegramId, first_name: 'Новый', username: 'new_owner' }) }
-    });
+    }));
     check(
       'telegram login creates a customer profile',
       plainLogin.status === 200 && plainLogin.json?.profile?.role === 'CUSTOMER',
@@ -266,7 +320,7 @@ async function main() {
     );
 
     const plainToken = sessionFrom(plainLogin);
-    const promoted = await api('/api/service-centers/register', {
+    const promoted = trackCreated(await api('/api/service-centers/register', {
       method: 'POST',
       token: plainToken ?? undefined,
       body: {
@@ -279,7 +333,7 @@ async function main() {
         baysCount: 2,
         mastersCount: 2
       }
-    });
+    }));
     check(
       'customer can register a service center',
       promoted.status === 201,
@@ -414,7 +468,222 @@ async function main() {
   }
   check('auth endpoint rate limited', limited);
 
+  console.log('\n--- OWNER WORKSPACE (services, bays, masters, hours) ---');
+  const ownerBotToken = process.env.TELEGRAM_BOT_TOKEN;
+  const seededOwnerProfile = process.env.E2E_OWNER_PROFILE;
+  const seededOtherProfile = process.env.E2E_OTHER_OWNER_PROFILE;
+  if (!ownerBotToken && !seededOwnerProfile) {
+    console.log('  SKIP: set TELEGRAM_BOT_TOKEN or E2E_OWNER_PROFILE to exercise the owner workspace end to end');
+  } else {
+    // With a bot token the whole Telegram path is covered; with pre-seeded
+    // profiles the owner flow is still exercised over real HTTP sessions.
+    const startOwner = async (profileId: string | undefined, telegramId: number, firstName: string, username: string) => {
+      if (ownerBotToken) {
+        const login = trackCreated(await api('/api/telegram/verify', {
+          method: 'POST',
+          body: { initData: buildInitData(ownerBotToken, { id: telegramId, first_name: firstName, username }) }
+        }));
+        return { session: sessionFrom(login), role: login.json?.profile?.role as string | undefined };
+      }
+      const token = createSessionToken(profileId as string, telegramId);
+      const me = await api('/api/auth/me', { token });
+      return { session: me.status === 200 ? token : null, role: me.json?.profile?.role as string | undefined };
+    };
+
+    const firstOwner = await startOwner(seededOwnerProfile, 1097348025, 'Владелец', 'owner_e2e');
+    const ownerSession = firstOwner.session;
+    check('new owner account signs in', Boolean(ownerSession), `role ${firstOwner.role}`);
+
+    if (ownerSession) {
+      const ownerCustomerRole = firstOwner.role;
+      check('new account starts as CUSTOMER', ownerCustomerRole === 'CUSTOMER', `got ${ownerCustomerRole}`);
+
+      const customerOwnerAttempt = await api('/api/owner/service-center', { token: customerToken });
+      check('plain customer blocked from owner workspace', customerOwnerAttempt.status === 403, `got ${customerOwnerAttempt.status}`);
+
+      const centerRegistration = trackCreated(await api('/api/service-centers/register', {
+        method: 'POST',
+        token: ownerSession,
+        body: {
+          name: 'СТО «E2E»',
+          description: 'Автосервис, созданный сквозным тестом владельца',
+          address: 'ул. Тестовая, 7',
+          latitude: 55.01,
+          longitude: 82.94,
+          phone: '+7 (383) 000-00-77',
+          baysCount: 2,
+          mastersCount: 1
+        }
+      }));
+      const ownedCenterId = centerRegistration.json?.center?.id;
+      check(
+        'customer registers own center and becomes SERVICE_OWNER',
+        centerRegistration.status === 201 && centerRegistration.json?.profile?.role === 'SERVICE_OWNER' && Boolean(ownedCenterId),
+        `got ${centerRegistration.status} ${centerRegistration.json?.profile?.role}`
+      );
+
+      const workspace = await api('/api/owner/service-center', { token: ownerSession });
+      check(
+        'owner workspace loads center with seeded resources',
+        workspace.status === 200 && workspace.json?.center?.id === ownedCenterId && workspace.json?.bays?.length === 2 && workspace.json?.masters?.length === 1 && workspace.json?.businessHours?.length === 7,
+        `got ${workspace.status} bays=${workspace.json?.bays?.length} hours=${workspace.json?.businessHours?.length}`
+      );
+
+      const createdService = await api('/api/owner/services', {
+        method: 'POST',
+        token: ownerSession,
+        body: { customName: 'Компьютерная диагностика', customCategory: 'Диагностика', price: 1500, durationMinutes: 45 }
+      });
+      const serviceId = createdService.json?.service?.id;
+      check('owner creates own service', createdService.status === 201 && Boolean(serviceId), `got ${createdService.status}`);
+
+      const updatedService = await api(`/api/owner/services/${serviceId}`, {
+        method: 'PATCH',
+        token: ownerSession,
+        body: { price: 1900, durationMinutes: 60 }
+      });
+      check(
+        'owner updates price and duration',
+        updatedService.status === 200 && updatedService.json?.service?.price === 1900 && updatedService.json?.service?.duration_minutes === 60,
+        `got ${updatedService.status} ${JSON.stringify(updatedService.json?.service)?.slice(0, 90)}`
+      );
+
+      const invalidService = await api('/api/owner/services', {
+        method: 'POST',
+        token: ownerSession,
+        body: { customName: 'X', customCategory: 'Y', price: -5, durationMinutes: 2 }
+      });
+      check('invalid service rejected', invalidService.status === 400, `got ${invalidService.status}`);
+
+      const hiddenService = await api(`/api/owner/services/${serviceId}`, {
+        method: 'PATCH',
+        token: ownerSession,
+        body: { isActive: false }
+      });
+      check('owner can hide a service', hiddenService.status === 200 && hiddenService.json?.service?.is_active === false, `got ${hiddenService.status}`);
+
+      const deletedService = await api(`/api/owner/services/${serviceId}`, { method: 'DELETE', token: ownerSession });
+      check('owner deletes own service', deletedService.status === 200 && deletedService.json?.success === true, `got ${deletedService.status}`);
+
+      const createdBay = await api('/api/owner/bays', { method: 'POST', token: ownerSession, body: { name: 'Диагностический стенд', bayType: 'diagnostics' } });
+      const bayId = createdBay.json?.bay?.id;
+      check('owner creates a bay', createdBay.status === 201 && createdBay.json?.bay?.bay_type === 'diagnostics', `got ${createdBay.status}`);
+
+      const renamedBay = await api(`/api/owner/bays/${bayId}`, { method: 'PATCH', token: ownerSession, body: { name: 'Стенд №1' } });
+      check('owner renames a bay', renamedBay.status === 200 && renamedBay.json?.bay?.name === 'Стенд №1', `got ${renamedBay.status}`);
+
+      const createdMaster = await api('/api/owner/masters', {
+        method: 'POST',
+        token: ownerSession,
+        body: { fullName: 'Пётр Тестовый', specialization: 'Диагностика', schedule: { work_days: [1, 2, 3, 4, 5], start: '08:00', end: '19:00' } }
+      });
+      const masterId = createdMaster.json?.master?.id;
+      check('owner creates a master with a schedule', createdMaster.status === 201 && createdMaster.json?.master?.schedule_json?.start === '08:00', `got ${createdMaster.status}`);
+
+      const updatedMaster = await api(`/api/owner/masters/${masterId}`, {
+        method: 'PATCH',
+        token: ownerSession,
+        body: { schedule: { work_days: [1, 2, 3, 4, 5, 6], start: '09:30', end: '21:00' } }
+      });
+      check('owner updates master schedule', updatedMaster.status === 200 && updatedMaster.json?.master?.schedule_json?.end === '21:00', `got ${updatedMaster.status}`);
+
+      const hoursPayload = Array.from({ length: 7 }, (_, day) => ({
+        dayOfWeek: day,
+        openTime: day === 0 ? '09:00' : '08:00',
+        closeTime: day === 0 ? '17:00' : '20:00',
+        isClosed: false
+      }));
+      const hoursUpdate = await api('/api/owner/business-hours', { method: 'PUT', token: ownerSession, body: { hours: hoursPayload } });
+      check(
+        'owner replaces the weekly schedule',
+        hoursUpdate.status === 200 && hoursUpdate.json?.businessHours?.find((h: any) => h.day_of_week === 1)?.open_time === '08:00',
+        `got ${hoursUpdate.status}`
+      );
+
+      const invalidHours = await api('/api/owner/business-hours', {
+        method: 'PUT',
+        token: ownerSession,
+        body: { hours: [{ dayOfWeek: 1, openTime: '20:00', closeTime: '10:00', isClosed: false }] }
+      });
+      check('schedule with closing before opening rejected', invalidHours.status === 400, `got ${invalidHours.status}`);
+
+      const profileUpdate = await api('/api/owner/service-center', {
+        method: 'PATCH',
+        token: ownerSession,
+        body: { name: 'СТО «E2E» переименовано', phone: '+7 (383) 000-00-88', website: 'https://example.ru' }
+      });
+      check('owner updates own center profile', profileUpdate.status === 200 && profileUpdate.json?.center?.name === 'СТО «E2E» переименовано', `got ${profileUpdate.status}`);
+
+      const privilegedField = await api('/api/owner/service-center', {
+        method: 'PATCH',
+        token: ownerSession,
+        body: { status: 'ACTIVE', rating: 1 }
+      });
+      check('owner cannot smuggle status or rating', !privilegedField.json?.center || privilegedField.json.center.status !== 'ACTIVE', `got ${privilegedField.status}`);
+
+      const secondOwner = await startOwner(seededOtherProfile, 1097348026, 'Чужой', 'other_owner');
+      const otherOwnerSession = secondOwner.session;
+      if (otherOwnerSession) {
+        await trackCreated(await api('/api/service-centers/register', {
+          method: 'POST',
+          token: otherOwnerSession,
+          body: {
+            name: 'Чужое СТО',
+            description: 'Автосервис другого владельца для проверки изоляции',
+            address: 'ул. Чужая, 1',
+            latitude: 55.02,
+            longitude: 82.95,
+            phone: '+7 (383) 000-00-99',
+            baysCount: 1,
+            mastersCount: 1
+          }
+        }));
+        const foreignServicePatch = await api(`/api/owner/services/${serviceId}`, {
+          method: 'PATCH',
+          token: otherOwnerSession,
+          body: { price: 1 }
+        });
+        check('one owner cannot touch another owner catalog', foreignServicePatch.status === 404 || foreignServicePatch.status === 400, `got ${foreignServicePatch.status}`);
+
+        const foreignProfilePatch = await api('/api/owner/service-center', {
+          method: 'PATCH',
+          token: otherOwnerSession,
+          body: { name: 'Взлом' }
+        });
+        check('owner profile patch applies to own center only', foreignProfilePatch.status === 200 && foreignProfilePatch.json?.center?.id !== ownedCenterId, `got ${foreignProfilePatch.status}`);
+      }
+
+      const cleanupBay = await api(`/api/owner/bays/${bayId}`, { method: 'DELETE', token: ownerSession });
+      check('owner deletes a bay', cleanupBay.status === 200 && cleanupBay.json?.success === true, `got ${cleanupBay.status}`);
+
+      const cleanupMaster = await api(`/api/owner/masters/${masterId}`, { method: 'DELETE', token: ownerSession });
+      check('owner deletes a master', cleanupMaster.status === 200 && cleanupMaster.json?.success === true, `got ${cleanupMaster.status}`);
+
+      // A center can only be booked once it is approved, and its own catalog has
+      // to produce slots for customers.
+      const pendingSlot = await firstAvailableSlot(ownedCenterId, workspace.json?.services?.[0]?.id);
+      check('pending center is not bookable', !pendingSlot.startAt, `got ${pendingSlot.startAt}`);
+
+      await api(`/api/admin/service-centers/${ownedCenterId}/status`, { method: 'PATCH', token: adminToken, body: { status: 'ACTIVE' } });
+      const bookableService = await api('/api/owner/services', {
+        method: 'POST',
+        token: ownerSession,
+        body: { customName: 'Замена масла', customCategory: 'ТО', price: 2500, durationMinutes: 60 }
+      });
+      const bookableServiceId = bookableService.json?.service?.id;
+      const ownerSlot = await firstAvailableSlot(ownedCenterId, bookableServiceId);
+      check('owner service produces bookable slots after approval', Boolean(ownerSlot.startAt), `status ${ownerSlot.status}`);
+
+      const ownerAppointments = await api('/api/owner/appointments', { token: ownerSession });
+      check('owner appointment list is scoped to own center', ownerAppointments.status === 200 && ownerAppointments.json?.center?.id === ownedCenterId, `got ${ownerAppointments.status}`);
+    }
+  }
+
+  console.log('\n--- TEARDOWN ---');
+  await teardown();
+
   console.log('\n========================================');
+
   console.log(`PASSED: ${passed}`);
   console.log(`FAILED: ${failed}`);
   console.log('========================================');
