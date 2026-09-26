@@ -1,0 +1,15 @@
+# Артефакты локальной сборки: Vercel собирает проект сам, а старый
+# .vercel/output может перекрыть свежий билд.
+.vercel/output
+dist
+node_modules
+.env
+.env.local
+.env.*.local
+
+# Секреты и отладочные файлы
+token.txt
+*.log
+tmp-*.mjs
+tmp-*.mts
+tmp-*.ts
