@@ -3,6 +3,7 @@ import { Vehicle, ServiceCenter, AvailableSlot, ServiceCenterService } from '../
 import { X, ChevronLeft, Calendar as CalendarIcon, CheckCircle2, AlertCircle, Clock, MapPin, Star, Shield, Car, Plus } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { triggerHaptic } from '../../lib/telegram/webapp';
+import { formatDistance, formatMinPrice } from '../screens/centerMeta';
 
 interface QuickBookingModalProps {
   isOpen: boolean;
@@ -455,12 +456,15 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                            <MapPin className="w-3 h-3 text-slate-400" /> {sc.address} · {sc.distance_km || 3.2} км
+                            <MapPin className="w-3 h-3 text-slate-400" /> {sc.address}
+                            {formatDistance(sc.distance_km) && <span> · {formatDistance(sc.distance_km)}</span>}
                           </p>
                         </div>
-                        <span className="text-xs font-bold text-slate-900">
-                          от {sc.minPrice || 1500} ₽
-                        </span>
+                        {formatMinPrice(sc.minPrice) && (
+                          <span className="text-xs font-bold text-slate-900">
+                            {formatMinPrice(sc.minPrice)}
+                          </span>
+                        )}
                       </div>
                     );
                   })}

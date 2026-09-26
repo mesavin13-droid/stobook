@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FilterChip, RatingBadge, StatusBadge, Button } from '../design-system';
 import { ArrowLeft, MapPin, SlidersHorizontal, Map, List, Clock } from 'lucide-react';
 import { ServiceCenter } from '../../types';
+import { availabilityBadge, formatDistance, formatMinPrice, nextSlotLabel } from './centerMeta';
 
 export interface ScreenMarketplaceResultsProps {
   taskTitle: string;
@@ -23,11 +24,18 @@ export const ScreenMarketplaceResults: React.FC<ScreenMarketplaceResultsProps> =
   const [activeFilter, setActiveFilter] = useState<string>('Все');
   const [sortBy, setSortBy] = useState<'distance' | 'price' | 'rating'>('distance');
 
-  const filtered = serviceCenters.filter((sc) => {
-    if (activeFilter === 'Сегодня' && sc.availabilityStatus !== 'today') return false;
-    if (activeFilter === 'Открыто' && sc.availabilityStatus === 'closed') return false;
-    return true;
-  });
+  const filtered = serviceCenters
+    .filter((sc) => {
+      if (activeFilter === 'Сегодня' && sc.availabilityStatus !== 'today') return false;
+      if (activeFilter === 'Открыто' && sc.availabilityStatus === 'closed') return false;
+      return true;
+    })
+    .slice()
+    .sort((a, b) => {
+      if (sortBy === 'rating') return b.rating - a.rating;
+      if (sortBy === 'price') return (a.minPrice ?? Infinity) - (b.minPrice ?? Infinity);
+      return (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity);
+    });
 
   return (
     <div className="min-h-full flex flex-col bg-[#F6F7F8] p-4 sm:p-6 space-y-4 pb-24">
@@ -102,7 +110,6 @@ export const ScreenMarketplaceResults: React.FC<ScreenMarketplaceResultsProps> =
       {/* Clean Marketplace Cards List */}
       <div className="space-y-3 pt-1">
         {filtered.map((sc) => {
-          const isToday = sc.availabilityStatus === 'today';
           return (
             <div
               key={sc.id}
@@ -127,11 +134,15 @@ export const ScreenMarketplaceResults: React.FC<ScreenMarketplaceResultsProps> =
 
                   <div className="flex items-center gap-2 text-xs text-[#70777D] mt-1">
                     <RatingBadge rating={sc.rating} count={sc.reviews_count} />
-                    <span>·</span>
-                    <span className="flex items-center gap-0.5">
-                      <MapPin className="w-3 h-3 text-[#70777D]" />
-                      {sc.distance_km || 1.7} км
-                    </span>
+                    {formatDistance(sc.distance_km) && (
+                      <>
+                        <span>·</span>
+                        <span className="flex items-center gap-0.5">
+                          <MapPin className="w-3 h-3 text-[#70777D]" />
+                          {formatDistance(sc.distance_km)}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -139,21 +150,23 @@ export const ScreenMarketplaceResults: React.FC<ScreenMarketplaceResultsProps> =
                   <span className="text-[11px] text-[#70777D] block">
                     {taskTitle.slice(0, 15)}...
                   </span>
-                  <span className="text-base font-black text-[#111315]">
-                    от {(sc.minPrice ? sc.minPrice + 1000 : 2500).toLocaleString('ru-RU')} ₽
-                  </span>
+                  {formatMinPrice(sc.minPrice) && (
+                    <span className="text-base font-black text-[#111315]">
+                      {formatMinPrice(sc.minPrice)}
+                    </span>
+                  )}
                 </div>
               </div>
 
               {/* Status and nearest available slot info */}
               <div className="flex items-center justify-between pt-1 border-t border-[#E1E4E6]/60 text-xs">
                 <StatusBadge
-                  status={isToday ? 'today' : 'tomorrow'}
-                  text={isToday ? 'Сегодня есть места' : 'Свободно завтра'}
+                  status={availabilityBadge(sc).status}
+                  text={availabilityBadge(sc).text}
                 />
                 <span className="text-xs font-mono font-bold text-[#111315] flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-[#70777D]" />
-                  Ближайшее: {sc.available_today_slots?.[0] || '15:30'}
+                  {nextSlotLabel(sc.available_today_slots) ?? 'Нет окон на сегодня'}
                 </span>
               </div>
 

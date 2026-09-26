@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ServiceCenter, MapMarkerData } from '../../types';
 import { createMapProvider } from '../../lib/maps';
 import { FilterChip, RatingBadge, StatusBadge, Button } from '../design-system';
+import { formatDistance, formatMinPrice } from './centerMeta';
 import { Search, MapPin, ChevronRight, X, Phone, Clock, ArrowRight } from 'lucide-react';
 
 export interface ScreenMapProps {
@@ -32,14 +33,14 @@ export const ScreenMap: React.FC<ScreenMapProps> = ({
     lng: sc.longitude,
     rating: sc.rating,
     reviewsCount: sc.reviews_count,
-    distanceKm: sc.distance_km || 1.7,
-    availabilityStatus: sc.availabilityStatus || 'today',
-    nextAvailableSlots: sc.available_today_slots || ['15:30', '17:00', '18:30'],
-    minPrice: sc.minPrice || 2500,
+    distanceKm: sc.distance_km,
+    availabilityStatus: sc.availabilityStatus ?? 'none',
+    nextAvailableSlots: sc.available_today_slots ?? [],
+    minPrice: sc.minPrice,
     isPromoted: Boolean(sc.is_promoted),
     address: sc.address,
     phone: sc.phone,
-    photoUrl: sc.photos?.[0] || 'https://images.unsplash.com/photo-1613214149922-f1809c99b414?auto=format&fit=crop&w=400&q=80'
+    photoUrl: sc.photos?.[0]
   }));
 
   const filteredCenters = serviceCenters.filter((sc) => {
@@ -181,39 +182,46 @@ export const ScreenMap: React.FC<ScreenMapProps> = ({
                 </div>
                 <div className="flex items-center gap-2 text-xs text-[#70777D] mt-0.5">
                   <RatingBadge rating={selectedCenter.rating} count={selectedCenter.reviews_count} />
-                  <span>·</span>
-                  <span className="flex items-center gap-0.5">
-                    <MapPin className="w-3 h-3 text-[#70777D]" />
-                    {selectedCenter.distance_km || 1.7} км
-                  </span>
+                  {formatDistance(selectedCenter.distance_km) && (
+                    <>
+                      <span>·</span>
+                      <span className="flex items-center gap-0.5">
+                        <MapPin className="w-3 h-3 text-[#70777D]" />
+                        {formatDistance(selectedCenter.distance_km)}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
-              <div className="text-right">
-                <span className="text-[11px] text-[#70777D] block">от</span>
-                <span className="text-sm font-black text-[#111315]">
-                  {(selectedCenter.minPrice || 2500).toLocaleString('ru-RU')} ₽
-                </span>
-              </div>
+              {formatMinPrice(selectedCenter.minPrice) && (
+                <div className="text-right">
+                  <span className="text-sm font-black text-[#111315]">
+                    {formatMinPrice(selectedCenter.minPrice)}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Today's slots */}
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold text-[#70777D] uppercase tracking-wider">
-                Сегодня свободно:
-              </span>
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                {(selectedCenter.available_today_slots || ['15:30', '17:00', '18:30']).map((slot, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => onBookServiceCenter(selectedCenter)}
-                    className="px-2.5 py-1.5 rounded-[10px] bg-[#F6F7F8] hover:bg-[#B8F23A] text-xs font-bold font-mono text-[#111315] border border-[#E1E4E6] transition-colors"
-                  >
-                    {slot}
-                  </button>
-                ))}
+            {selectedCenter.available_today_slots && selectedCenter.available_today_slots.length > 0 && (
+              <div className="space-y-1">
+                <span className="text-[11px] font-bold text-[#70777D] uppercase tracking-wider">
+                  Сегодня свободно:
+                </span>
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                  {selectedCenter.available_today_slots.map((slot, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => onBookServiceCenter(selectedCenter)}
+                      className="px-2.5 py-1.5 rounded-[10px] bg-[#F6F7F8] hover:bg-[#B8F23A] text-xs font-bold font-mono text-[#111315] border border-[#E1E4E6] transition-colors"
+                    >
+                      {slot}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Action Buttons: [Подробнее] [Записаться] */}
             <div className="grid grid-cols-2 gap-2 pt-1">

@@ -43,11 +43,17 @@ export const ServiceCenterDetailModal: React.FC<ServiceCenterDetailModalProps> =
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 flex flex-col max-h-[92vh]">
         {/* Header photo & close */}
         <div className="relative h-48 bg-slate-900 shrink-0">
-          <img
-            src={current.photos?.[0] || 'https://images.unsplash.com/photo-1613214149922-f1809c99b414?auto=format&fit=crop&w=900&q=80'}
-            alt={current.name}
-            className="w-full h-full object-cover opacity-85"
-          />
+          {current.photos?.[0] ? (
+            <img
+              src={current.photos[0]}
+              alt={current.name}
+              className="w-full h-full object-cover opacity-85"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <Wrench className="w-12 h-12 text-slate-600" />
+            </div>
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent" />
           <button
             onClick={onClose}
@@ -71,8 +77,12 @@ export const ServiceCenterDetailModal: React.FC<ServiceCenterDetailModalProps> =
               </span>
               <span>·</span>
               <span>{current.reviews_count} отзывов</span>
-              <span>·</span>
-              <span>{current.distance_km || 3.2} км от центра</span>
+              {current.distance_km != null && (
+                <>
+                  <span>·</span>
+                  <span>{current.distance_km} км от центра</span>
+                </>
+              )}
             </div>
           </div>
         </div>

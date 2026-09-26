@@ -335,14 +335,14 @@ export interface MapMarkerData {
   lng: number;
   rating: number;
   reviewsCount: number;
-  distanceKm: number;
+  distanceKm?: number;
   availabilityStatus: 'today' | 'tomorrow' | 'none' | 'closed';
   nextAvailableSlots: string[];
-  minPrice: number;
+  minPrice?: number;
   isPromoted: boolean;
   address: string;
   phone: string;
-  photoUrl: string;
+  photoUrl?: string;
 }
 
 export interface MapBounds {

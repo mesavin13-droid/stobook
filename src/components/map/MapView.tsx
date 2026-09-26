@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { ServiceCenter, MapMarkerData } from '../../types';
 import { createMapProvider } from '../../lib/maps';
 import { Star, MapPin, Clock, Phone, Navigation as NavigationIcon, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../lib/telegram/webapp';
+import { formatDistance, formatMinPrice } from '../screens/centerMeta';
 
 interface MapViewProps {
   serviceCenters: ServiceCenter[];
@@ -28,14 +29,14 @@ export const MapView: React.FC<MapViewProps> = ({
     lng: sc.longitude,
     rating: sc.rating,
     reviewsCount: sc.reviews_count,
-    distanceKm: sc.distance_km || 3.5,
-    availabilityStatus: sc.availabilityStatus || 'today',
-    nextAvailableSlots: sc.available_today_slots || [],
-    minPrice: sc.minPrice || 1500,
+    distanceKm: sc.distance_km,
+    availabilityStatus: sc.availabilityStatus ?? 'none',
+    nextAvailableSlots: sc.available_today_slots ?? [],
+    minPrice: sc.minPrice,
     isPromoted: Boolean(sc.is_promoted),
     address: sc.address,
     phone: sc.phone,
-    photoUrl: sc.photos?.[0] || 'https://images.unsplash.com/photo-1613214149922-f1809c99b414?auto=format&fit=crop&w=400&q=80'
+    photoUrl: sc.photos?.[0]
   }));
 
   const [mapReady, setMapReady] = useState<boolean>(false);
@@ -174,13 +175,19 @@ export const MapView: React.FC<MapViewProps> = ({
                       </span>
                       <span>·</span>
                       <span>{marker.reviewsCount} отзывов</span>
-                      <span>·</span>
-                      <span>{marker.distanceKm} км</span>
+                      {formatDistance(marker.distanceKm) && (
+                        <>
+                          <span>·</span>
+                          <span>{formatDistance(marker.distanceKm)}</span>
+                        </>
+                      )}
                     </div>
                   </div>
-                  <span className="text-xs font-bold text-slate-900">
-                    от {marker.minPrice.toLocaleString('ru-RU')} ₽
-                  </span>
+                  {formatMinPrice(marker.minPrice) && (
+                    <span className="text-xs font-bold text-slate-900">
+                      {formatMinPrice(marker.minPrice)}
+                    </span>
+                  )}
                 </div>
 
                 <p className="text-xs text-slate-600 mt-1.5 flex items-center gap-1">
@@ -232,12 +239,16 @@ export const MapView: React.FC<MapViewProps> = ({
         <div className="md:hidden absolute bottom-2 left-2 right-2 z-30 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 animate-in slide-in-from-bottom duration-300">
           <div className="flex items-start justify-between mb-2">
             <div className="flex items-center gap-2.5">
-              <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden shrink-0 border border-slate-200">
-                <img
-                  src={selectedCenter.photos?.[0] || 'https://images.unsplash.com/photo-1613214149922-f1809c99b414?auto=format&fit=crop&w=400&q=80'}
-                  alt={selectedCenter.name}
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden shrink-0 border border-slate-200 flex items-center justify-center">
+                {selectedCenter.photos?.[0] ? (
+                  <img
+                    src={selectedCenter.photos[0]}
+                    alt={selectedCenter.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <MapPin className="w-5 h-5 text-slate-400" />
+                )}
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
@@ -250,14 +261,20 @@ export const MapView: React.FC<MapViewProps> = ({
                   <span className="font-bold text-amber-500">★ {selectedCenter.rating}</span>
                   <span>·</span>
                   <span>{selectedCenter.reviews_count} отзывов</span>
-                  <span>·</span>
-                  <span>{selectedCenter.distance_km || 3.2} км</span>
+                  {formatDistance(selectedCenter.distance_km) && (
+                    <>
+                      <span>·</span>
+                      <span>{formatDistance(selectedCenter.distance_km)}</span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
-            <span className="text-xs font-bold text-slate-900">
-              от {selectedCenter.minPrice || 1500} ₽
-            </span>
+            {formatMinPrice(selectedCenter.minPrice) && (
+              <span className="text-xs font-bold text-slate-900">
+                {formatMinPrice(selectedCenter.minPrice)}
+              </span>
+            )}
           </div>
 
           <p className="text-xs text-slate-500 flex items-center gap-1 mb-2.5">

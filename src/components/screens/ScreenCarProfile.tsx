@@ -4,7 +4,7 @@ import { ArrowLeft, Car, Wrench, Calendar, ChevronRight, ShieldCheck, Plus } fro
 import { Vehicle } from '../../types';
 
 export interface ScreenCarProfileProps {
-  vehicle: Vehicle;
+  vehicle: Vehicle | null;
   onBack: () => void;
   onEdit: () => void;
   onBook: () => void;
@@ -16,6 +16,19 @@ export const ScreenCarProfile: React.FC<ScreenCarProfileProps> = ({
   onEdit,
   onBook
 }) => {
+  if (!vehicle) {
+    return (
+      <div className="min-h-full flex flex-col items-center justify-center gap-3 bg-[#F6F7F8] p-6 text-center">
+        <Car className="w-12 h-12 text-[#70777D]" />
+        <h1 className="text-lg font-black text-[#111315]">Автомобиль не выбран</h1>
+        <p className="text-sm text-[#70777D]">Добавьте автомобиль, чтобы вести его историю</p>
+        <Button variant="primary" onClick={onEdit}>
+          Добавить автомобиль
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-full flex flex-col justify-between bg-[#F6F7F8] p-4 sm:p-6 pb-24">
       <div className="space-y-5">
@@ -39,15 +52,13 @@ export const ScreenCarProfile: React.FC<ScreenCarProfileProps> = ({
 
         {/* Big Car Card */}
         <div className="bg-white rounded-[22px] border border-[#E1E4E6] overflow-hidden shadow-xs">
-          <div className="relative w-full h-44 bg-[#111315]">
-            <img
-              src="https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=800&q=80"
-              alt="Toyota Camry"
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute top-3 right-3 bg-[#111315]/80 backdrop-blur-md px-2.5 py-1 rounded-full text-[11px] font-mono font-bold text-white border border-white/20">
-              О 777 ОО 54
-            </div>
+          <div className="relative w-full h-44 bg-[#ECEFF1] flex items-center justify-center">
+            <Car className="w-16 h-16 text-[#70777D]" />
+            {vehicle.license_plate && (
+              <div className="absolute top-3 right-3 bg-[#111315]/80 backdrop-blur-md px-2.5 py-1 rounded-full text-[11px] font-mono font-bold text-white border border-white/20">
+                {vehicle.license_plate}
+              </div>
+            )}
           </div>
 
           <div className="p-5 space-y-4">
@@ -88,45 +99,15 @@ export const ScreenCarProfile: React.FC<ScreenCarProfileProps> = ({
 
         {/* Section: "История обслуживания" */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-extrabold text-[#111315] tracking-tight">
-              История обслуживания
-            </h3>
-            <span className="text-xs text-[#70777D] font-semibold">2 записи</span>
-          </div>
+          <h3 className="text-sm font-extrabold text-[#111315] tracking-tight">
+            История обслуживания
+          </h3>
 
-          {/* Record 1 */}
-          <div className="bg-white rounded-[18px] border border-[#E1E4E6] p-4 shadow-xs space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#111315]">12.09.2026</span>
-              <span className="text-xs font-bold text-[#35B86B] bg-[#35B86B]/10 px-2 py-0.5 rounded-full">
-                Подтверждено СТО
-              </span>
-            </div>
-            <div>
-              <h4 className="text-xs font-extrabold text-[#111315]">Замена моторного масла и фильтров</h4>
-              <p className="text-[11px] text-[#70777D]">АвтоДок · Пробег: 120 000 км · Стоимость: 3 800 ₽</p>
-            </div>
-            <div className="text-[11px] text-[#70777D] pt-1 border-t border-[#E1E4E6]/60">
-              Материалы: Масло Motul 5W-30 (4.5 л), масляный фильтр Mann.
-            </div>
-          </div>
-
-          {/* Record 2 */}
-          <div className="bg-white rounded-[18px] border border-[#E1E4E6] p-4 shadow-xs space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#111315]">10.07.2026</span>
-              <span className="text-xs font-bold text-[#35B86B] bg-[#35B86B]/10 px-2 py-0.5 rounded-full">
-                Подтверждено СТО
-              </span>
-            </div>
-            <div>
-              <h4 className="text-xs font-extrabold text-[#111315]">Диагностика подвески и тормозной системы</h4>
-              <p className="text-[11px] text-[#70777D]">СТО 54 · Пробег: 115 000 км · Стоимость: 1 200 ₽</p>
-            </div>
-            <div className="text-[11px] text-[#70777D] pt-1 border-t border-[#E1E4E6]/60">
-              Рекомендована замена передних тормозных колодок при следующем ТО.
-            </div>
+          <div className="bg-white rounded-[18px] border border-dashed border-[#C9CFD4] p-6 text-center">
+            <p className="text-sm font-bold text-[#111315]">Записей пока нет</p>
+            <p className="text-xs text-[#70777D] mt-1">
+              История появится после первого обслуживания в автосервисе
+            </p>
           </div>
         </div>
       </div>

@@ -4,7 +4,7 @@ import { User, Car, Bell, Settings, ShieldCheck, ChevronRight, Plus, Wrench, Cre
 import { Profile, Vehicle } from '../../types';
 
 export interface ScreenProfileProps {
-  vehicle: Vehicle;
+  vehicle: Vehicle | null;
   onOpenCarProfile: () => void;
   onAddCar: () => void;
   profile?: Profile | null;
@@ -78,31 +78,49 @@ export const ScreenProfile: React.FC<ScreenProfileProps> = ({
         </div>
 
         {/* Car Item */}
-        <div
-          onClick={onOpenCarProfile}
-          className="cursor-pointer bg-white rounded-[18px] border border-[#E1E4E6] p-4 shadow-xs flex items-center justify-between hover:border-[#111315] transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-[14px] bg-[#ECEFF1] overflow-hidden flex items-center justify-center">
-              <span className="text-xl">🚗</span>
+        {vehicle ? (
+          <div
+            onClick={onOpenCarProfile}
+            className="cursor-pointer bg-white rounded-[18px] border border-[#E1E4E6] p-4 shadow-xs flex items-center justify-between hover:border-[#111315] transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-[14px] bg-[#ECEFF1] overflow-hidden flex items-center justify-center">
+                <span className="text-xl">🚗</span>
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-[#111315]">
+                  {vehicle.brand} {vehicle.model}
+                </h3>
+                <p className="text-xs text-[#70777D] font-mono">
+                  {vehicle.year} · {vehicle.mileage.toLocaleString('ru-RU')} км
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-extrabold text-[#111315]">
-                {vehicle.brand} {vehicle.model}
-              </h3>
-              <p className="text-xs text-[#70777D] font-mono">
-                {vehicle.year} · {vehicle.mileage.toLocaleString('ru-RU')} км
-              </p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-[#70777D] hover:text-[#111315]">
-              Сервисная книжка
-            </span>
-            <ChevronRight className="w-4 h-4 text-[#70777D]" />
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-[#70777D] hover:text-[#111315]">
+                Сервисная книжка
+              </span>
+              <ChevronRight className="w-4 h-4 text-[#70777D]" />
+            </div>
           </div>
-        </div>
+        ) : (
+          <button
+            onClick={onAddCar}
+            className="w-full cursor-pointer bg-white rounded-[18px] border border-dashed border-[#C9CFD4] p-4 flex items-center justify-between hover:border-[#111315] transition-colors text-left"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-[14px] bg-[#ECEFF1] flex items-center justify-center">
+                <span className="text-xl">🚗</span>
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-[#111315]">Добавить автомобиль</h3>
+                <p className="text-xs text-[#70777D]">Нужен для записи на сервис</p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-[#70777D]" />
+          </button>
+        )}
       </div>
 
       {/* Role Management / Portals */}

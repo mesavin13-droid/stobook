@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Profile, Vehicle, ServiceCenter } from './types';
 import { Navigation } from './components/Navigation';
+import { Button } from './components/design-system';
 
 // Screens
 import { ScreenOnboarding } from './components/screens/ScreenOnboarding';
@@ -20,7 +21,6 @@ import { ScreenProfile } from './components/screens/ScreenProfile';
 import { ScreenCarProfile } from './components/screens/ScreenCarProfile';
 import { ScreenOwnerDashboard } from './components/screens/ScreenOwnerDashboard';
 import { ScreenOwnerSchedule } from './components/screens/ScreenOwnerSchedule';
-import { ScreenOwnerSettings } from './components/screens/ScreenOwnerSettings';
 import { ScreenOwnerManage } from './components/screens/ScreenOwnerManage';
 import { ScreenOwnerRegister } from './components/screens/ScreenOwnerRegister';
 import { AdminDashboard } from './components/admin/AdminDashboard';
@@ -43,7 +43,6 @@ export type ScreenId =
   | 'car_profile'
   | 'owner_dashboard'
   | 'owner_schedule'
-  | 'owner_settings'
   | 'owner_manage'
   | 'owner_register'
   | 'admin_dashboard';
@@ -53,81 +52,22 @@ export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
 
   // Core Data
-  const [vehicles, setVehicles] = useState<Vehicle[]>([
-    {
-      id: 'b1111111-1111-1111-1111-111111111111',
-      user_id: 'a1111111-1111-1111-1111-111111111111',
-      brand: 'Toyota',
-      model: 'Camry',
-      year: 2021,
-      mileage: 124000,
-      license_plate: 'О 777 ОО 54',
-      photo_url: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=600&q=80'
-    }
-  ]);
-
-  const [serviceCenters, setServiceCenters] = useState<ServiceCenter[]>([
-    {
-      id: 'c0010000-0000-0000-0000-000000000001',
-      owner_id: 'a2222222-2222-2222-2222-222222222222',
-      city_id: 'c1111111-1111-1111-1111-111111111111',
-      status: 'ACTIVE',
-      name: 'ТОП МОТОРС',
-      description: 'Специализированный автосервис японских и европейских автомобилей. Компьютерная диагностика, ремонт подвески, тормозных систем, плановое ТО.',
-      address: 'ул. Днепрогэсовская, 9/1',
-      latitude: 55.0125,
-      longitude: 82.9460,
-      phone: '+7 (383) 299-15-54',
-      rating: 4.9,
-      reviews_count: 852,
-      is_promoted: true,
-      minPrice: 1500,
-      distance_km: 1.7,
-      availabilityStatus: 'today',
-      available_today_slots: ['15:30', '17:00', '18:30'],
-      services: [
-        { id: 'f0010000-0000-0000-0000-000000000001', service_center_id: 'c0010000-0000-0000-0000-000000000001', custom_name: 'Замена тормозных колодок', price: 2500, duration_minutes: 60, custom_category: 'Тормоза', is_fixed_price: false, is_active: true },
-        { id: 'f0010000-0000-0000-0000-000000000002', service_center_id: 'c0010000-0000-0000-0000-000000000001', custom_name: 'Замена масла и фильтров', price: 1500, duration_minutes: 40, custom_category: 'Замена масла', is_fixed_price: false, is_active: true },
-        { id: 'f0010000-0000-0000-0000-000000000003', service_center_id: 'c0010000-0000-0000-0000-000000000001', custom_name: 'Компьютерная диагностика', price: 1000, duration_minutes: 30, custom_category: 'Диагностика', is_fixed_price: true, is_active: true },
-        { id: 'f0010000-0000-0000-0000-000000000004', service_center_id: 'c0010000-0000-0000-0000-000000000001', custom_name: 'Развал-схождение', price: 1800, duration_minutes: 60, custom_category: 'Подвеска', is_fixed_price: false, is_active: true }
-      ]
-    },
-    {
-      id: 'c0020000-0000-0000-0000-000000000002',
-      owner_id: 'a3333333-3333-3333-3333-333333333333',
-      city_id: 'c1111111-1111-1111-1111-111111111111',
-      status: 'ACTIVE',
-      name: 'НСК АВТО 54',
-      description: 'Профессиональный автосервис в Новосибирске. Замена техжидкостей, ремонт ДВС и тормозов.',
-      address: 'ул. Немировича-Данченко, 138',
-      latitude: 54.985,
-      longitude: 82.905,
-      phone: '+7 (383) 300-44-55',
-      rating: 4.7,
-      reviews_count: 198,
-      is_promoted: false,
-      minPrice: 2300,
-      distance_km: 2.4,
-      availabilityStatus: 'today',
-      available_today_slots: ['17:00', '18:30'],
-      services: [
-        { id: 'f0020000-0000-0000-0000-000000000001', service_center_id: 'c0020000-0000-0000-0000-000000000002', custom_name: 'Замена тормозных колодок', price: 2300, duration_minutes: 50, custom_category: 'Тормоза', is_fixed_price: false, is_active: true },
-        { id: 'f0020000-0000-0000-0000-000000000002', service_center_id: 'c0020000-0000-0000-0000-000000000002', custom_name: 'Замена масла', price: 1400, duration_minutes: 40, custom_category: 'Замена масла', is_fixed_price: false, is_active: true }
-      ]
-    }
-  ]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [serviceCenters, setServiceCenters] = useState<ServiceCenter[]>([]);
 
   // Booking Flow State
-  const [selectedCenter, setSelectedCenter] = useState<ServiceCenter>(serviceCenters[0]);
-  const [selectedTask, setSelectedTask] = useState<string>('Замена тормозных колодок');
-  const [selectedServiceItem, setSelectedServiceItem] = useState<{ id: string; name: string; price: number; duration: number }>({
-    id: 'f0010000-0000-0000-0000-000000000001',
-    name: 'Замена тормозных колодок',
-    price: 2500,
-    duration: 60
-  });
-  const [selectedDate, setSelectedDate] = useState<string>('2026-09-25');
-  const [selectedTime, setSelectedTime] = useState<string>('17:30');
+  const [selectedCenter, setSelectedCenter] = useState<ServiceCenter | null>(null);
+  const [selectedTask, setSelectedTask] = useState<string>('');
+  const [selectedServiceItem, setSelectedServiceItem] = useState<{ id: string; name: string; price: number; duration: number } | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedTime, setSelectedTime] = useState<string>('');
+  const [upcomingBookings, setUpcomingBookings] = useState(0);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const notify = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 2500);
+  };
 
   const loadVehicles = async (): Promise<Vehicle[]> => {
     const response = await fetch('/api/vehicles', { credentials: 'same-origin' });
@@ -136,23 +76,38 @@ export default function App() {
     return Array.isArray(data) ? data as Vehicle[] : [];
   };
 
+  const loadUpcomingBookings = async (): Promise<number> => {
+    const response = await fetch('/api/bookings', { credentials: 'same-origin' });
+    if (!response.ok) return 0;
+    const data = await response.json();
+    if (!Array.isArray(data)) return 0;
+    const now = Date.now();
+    return data.filter(
+      (booking: { start_at?: string; status?: string }) =>
+        booking.start_at &&
+        new Date(booking.start_at).getTime() >= now &&
+        !['COMPLETED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_SERVICE', 'NO_SHOW'].includes(booking.status ?? '')
+    ).length;
+  };
+
   // Sync initial backend data
   useEffect(() => {
     fetch('/api/service-centers')
-      .then((res) => (res.ok ? res.json() : null))
+      .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setServiceCenters(data);
-          setSelectedCenter(data[0]);
-        }
+        const centers = Array.isArray(data) ? (data as ServiceCenter[]) : [];
+        setServiceCenters(centers);
+        setSelectedCenter((current) => current ?? centers[0] ?? null);
       })
-      .catch(() => {});
+      .catch(() => setServiceCenters([]));
 
     loadVehicles()
-      .then((data) => {
-        if (data.length > 0) setVehicles(data);
-      })
-      .catch(() => {});
+      .then(setVehicles)
+      .catch(() => setVehicles([]));
+
+    loadUpcomingBookings()
+      .then(setUpcomingBookings)
+      .catch(() => setUpcomingBookings(0));
   }, []);
 
   useEffect(() => {
@@ -164,15 +119,7 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  const activeVehicle = vehicles[0] || {
-    id: 'b1111111-1111-1111-1111-111111111111',
-    user_id: 'a1111111-1111-1111-1111-111111111111',
-    brand: 'Toyota',
-    model: 'Camry',
-    year: 2021,
-    mileage: 124000,
-    license_plate: 'О 777 ОО 54'
-  };
+  const activeVehicle = vehicles[0] ?? null;
 
   // Determine whether to display the bottom tab bar
   const showBottomNav = ['home', 'map', 'bookings', 'profile'].includes(currentScreen);
@@ -186,7 +133,9 @@ export default function App() {
   // Real atomic booking submission
   const handleConfirmBooking = async () => {
     if (!requireAuthentication()) return;
-    // If selected service center has real services, pick matched or first
+    if (!selectedCenter || !selectedServiceItem || !activeVehicle) {
+      throw new Error('Не выбран автосервис, услуга или автомобиль');
+    }
     const targetServiceId = selectedServiceItem.id;
 
     // ISO start datetime
@@ -215,6 +164,31 @@ export default function App() {
 
   // Render active screen
   const renderScreen = () => {
+    const center = selectedCenter;
+    const vehicle = activeVehicle;
+    const serviceItem = selectedServiceItem;
+
+    const missingFlowData = (
+      <div className="min-h-full flex flex-col items-center justify-center gap-4 bg-[#F6F7F8] p-6 text-center">
+        <h2 className="text-lg font-black text-[#111315]">Недостаточно данных для записи</h2>
+        <p className="text-sm text-[#70777D] max-w-xs">
+          {!vehicle
+            ? 'Сначала добавьте автомобиль в профиле'
+            : 'Выберите автосервис и услугу, чтобы продолжить'}
+        </p>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setCurrentScreen('home')}>
+            На главную
+          </Button>
+          {!vehicle && (
+            <Button variant="primary" onClick={() => setCurrentScreen('add_car')}>
+              Добавить авто
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+
     switch (currentScreen) {
       case 'onboarding':
         return (
@@ -322,9 +296,9 @@ export default function App() {
         );
 
       case 'service_detail':
-        return (
+        return center ? (
           <ScreenServiceDetail
-            serviceCenter={selectedCenter}
+            serviceCenter={center}
             onBack={() => setCurrentScreen('marketplace')}
             onBook={() => setCurrentScreen('service_select')}
             onSelectServiceItem={(name) => {
@@ -332,27 +306,31 @@ export default function App() {
               setCurrentScreen('service_select');
             }}
           />
+        ) : (
+          missingFlowData
         );
 
       case 'service_select':
-        return (
+        return center && vehicle ? (
           <ScreenServiceSelect
-            vehicle={activeVehicle}
-            serviceCenter={selectedCenter}
+            vehicle={vehicle}
+            serviceCenter={center}
             initialSelectedService={selectedTask}
             onBack={() => setCurrentScreen('service_detail')}
-            onNext={(serviceItem) => {
-              setSelectedServiceItem(serviceItem);
+            onNext={(item) => {
+              setSelectedServiceItem(item);
               setCurrentScreen('datetime_select');
             }}
           />
+        ) : (
+          missingFlowData
         );
 
       case 'datetime_select':
-        return (
+        return center && serviceItem ? (
           <ScreenDateTimeSelect
-            serviceCenterId={selectedCenter.id}
-            serviceCenterServiceId={selectedServiceItem.id}
+            serviceCenterId={center.id}
+            serviceCenterServiceId={serviceItem.id}
             onBack={() => setCurrentScreen('service_select')}
             onNext={(date, time) => {
               setSelectedDate(date);
@@ -360,33 +338,39 @@ export default function App() {
               setCurrentScreen('confirmation');
             }}
           />
+        ) : (
+          missingFlowData
         );
 
       case 'confirmation':
-        return (
+        return center && vehicle && serviceItem ? (
           <ScreenConfirmation
-            vehicle={activeVehicle}
-            serviceCenter={selectedCenter}
-            serviceName={selectedServiceItem.name}
-            price={selectedServiceItem.price}
+            vehicle={vehicle}
+            serviceCenter={center}
+            serviceName={serviceItem.name}
+            price={serviceItem.price}
             dateStr={selectedDate}
             timeStr={selectedTime}
             onBack={() => setCurrentScreen('datetime_select')}
             onConfirm={handleConfirmBooking}
           />
+        ) : (
+          missingFlowData
         );
 
       case 'booking_success':
-        return (
+        return center && vehicle && serviceItem ? (
           <ScreenBookingSuccess
-            vehicle={activeVehicle}
-            serviceCenter={selectedCenter}
-            serviceName={selectedServiceItem.name}
+            vehicle={vehicle}
+            serviceCenter={center}
+            serviceName={serviceItem.name}
             timeStr={selectedTime}
             onOpenBooking={() => setCurrentScreen('bookings')}
-            onNavigateToCenter={() => alert('Маршрут передан в навигатор')}
-            onAddToCalendar={() => alert('Запись сохранена в календарь')}
+            onNavigateToCenter={() => notify('Построение маршрута пока недоступно')}
+            onAddToCalendar={() => notify('Добавление в календарь пока недоступно')}
           />
+        ) : (
+          missingFlowData
         );
 
       case 'bookings':
@@ -404,7 +388,8 @@ export default function App() {
             profile={profile}
             onAuthenticate={() => setCurrentScreen('auth')}
             onOpenCarProfile={() => {
-              if (requireAuthentication()) setCurrentScreen('car_profile');
+              if (!requireAuthentication()) return;
+              setCurrentScreen(activeVehicle ? 'car_profile' : 'add_car');
             }}
             onAddCar={() => {
               if (requireAuthentication()) setCurrentScreen('add_car');
@@ -442,7 +427,7 @@ export default function App() {
           <ScreenOwnerDashboard
             onBackToCustomer={() => setCurrentScreen('profile')}
             onOpenSchedule={() => setCurrentScreen('owner_schedule')}
-            onOpenSettings={() => setCurrentScreen('owner_settings')}
+            onOpenSettings={() => setCurrentScreen('owner_manage')}
             onOpenManage={() => setCurrentScreen('owner_manage')}
           />
         );
@@ -464,13 +449,6 @@ export default function App() {
       case 'owner_schedule':
         return (
           <ScreenOwnerSchedule
-            onBack={() => setCurrentScreen('owner_dashboard')}
-          />
-        );
-
-      case 'owner_settings':
-        return (
-          <ScreenOwnerSettings
             onBack={() => setCurrentScreen('owner_dashboard')}
           />
         );
@@ -503,8 +481,17 @@ export default function App() {
           <Navigation
             activeTab={currentScreen}
             setActiveTab={(tab) => setCurrentScreen(tab as ScreenId)}
-            bookingCount={1}
+            bookingCount={upcomingBookings}
           />
+        )}
+
+        {toast && (
+          <div
+            role="status"
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-[14px] bg-[#111315] text-white text-xs font-bold shadow-lg max-w-[90%] text-center"
+          >
+            {toast}
+          </div>
         )}
       </div>
     </div>

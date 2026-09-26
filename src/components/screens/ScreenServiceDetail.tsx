@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { RatingBadge, StatusBadge, Button } from '../design-system';
-import { ArrowLeft, Heart, MapPin, Check, Phone, ShieldCheck, Clock, Star, MessageSquare } from 'lucide-react';
-import { ServiceCenter } from '../../types';
+import React, { useEffect, useState } from 'react';
+import { RatingBadge, Button } from '../design-system';
+import { ArrowLeft, Heart, MapPin, Check, Phone, ShieldCheck, Clock } from 'lucide-react';
+import { BusinessHours, Review, ServiceCenter, ServiceCenterService } from '../../types';
+import { formatDistance } from './centerMeta';
 
 export interface ScreenServiceDetailProps {
   serviceCenter: ServiceCenter;
@@ -9,6 +10,8 @@ export interface ScreenServiceDetailProps {
   onBook: () => void;
   onSelectServiceItem?: (serviceName: string) => void;
 }
+
+const WEEKDAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
 export const ScreenServiceDetail: React.FC<ScreenServiceDetailProps> = ({
   serviceCenter,
@@ -18,33 +21,48 @@ export const ScreenServiceDetail: React.FC<ScreenServiceDetailProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'services' | 'reviews' | 'photos'>('overview');
   const [isFavorite, setIsFavorite] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [businessHours, setBusinessHours] = useState<BusinessHours[]>([]);
 
-  const photos = serviceCenter.photos?.length
-    ? serviceCenter.photos
-    : [
-        'https://images.unsplash.com/photo-1613214149922-f1809c99b414?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1486006920555-c77dce18193b?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1580273916550-e323be2ae537?auto=format&fit=crop&w=800&q=80'
-      ];
+  // Load full detail (reviews, business hours) for the selected center
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/service-centers/${serviceCenter.id}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((detail) => {
+        if (cancelled || !detail) return;
+        if (Array.isArray(detail.reviews)) setReviews(detail.reviews as Review[]);
+        if (Array.isArray(detail.business_hours)) setBusinessHours(detail.business_hours as BusinessHours[]);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [serviceCenter.id]);
 
-  const popularServices = serviceCenter.services?.length
-    ? serviceCenter.services
-    : [
-        { id: 's1', custom_name: 'Замена масла и фильтра', price_from: 1500, duration_minutes: 40 },
-        { id: 's2', custom_name: 'Комплексная диагностика', price_from: 1000, duration_minutes: 30 },
-        { id: 's3', custom_name: 'Замена тормозных колодок', price_from: 2500, duration_minutes: 60 }
-      ];
+  const photos = serviceCenter.photos ?? [];
+  const popularServices: ServiceCenterService[] = serviceCenter.services ?? [];
+
+  const todayHours = businessHours.find(
+    (hours) => hours.day_of_week === new Date().getDay() && !hours.is_closed
+  );
 
   return (
     <div className="min-h-full flex flex-col justify-between bg-[#F6F7F8] pb-24">
       <div>
         {/* Cover Hero Photo with Back & Favorite Controls */}
         <div className="relative w-full h-64 sm:h-72 bg-[#111315] overflow-hidden">
-          <img
-            src={photos[0]}
-            alt={serviceCenter.name}
-            className="w-full h-full object-cover"
-          />
+          {photos[0] ? (
+            <img
+              src={photos[0]}
+              alt={serviceCenter.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-[#ECEFF1]">
+              <MapPin className="w-16 h-16 text-[#70777D]" />
+            </div>
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-[#111315]/80 via-transparent to-black/30" />
 
           {/* Floating Controls */}
@@ -87,10 +105,27 @@ export const ScreenServiceDetail: React.FC<ScreenServiceDetailProps> = ({
               <span>·</span>
               <span className="flex items-center gap-1 font-semibold text-[#111315]">
                 <MapPin className="w-3.5 h-3.5 text-[#70777D]" />
-                {serviceCenter.address} ({serviceCenter.distance_km || 1.7} км)
+                {serviceCenter.address}
+                {formatDistance(serviceCenter.distance_km) && (
+                  <span> ({formatDistance(serviceCenter.distance_km)})</span>
+                )}
               </span>
-              <span>·</span>
-              <span className="font-bold text-[#35B86B]">🟢 Открыто до 20:00</span>
+              {todayHours && (
+                <>
+                  <span>·</span>
+                  <span className="font-bold text-[#35B86B]">
+                    🟢 Открыто до {todayHours.close_time}
+                  </span>
+                </>
+              )}
+              {!todayHours && businessHours.length > 0 && (
+                <>
+                  <span>·</span>
+                  <span className="font-bold text-[#70777D]">
+                    🔴 Сегодня закрыто
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -132,31 +167,40 @@ export const ScreenServiceDetail: React.FC<ScreenServiceDetailProps> = ({
             <div className="space-y-4">
               <div className="bg-white rounded-[18px] border border-[#E1E4E6] p-4 space-y-3">
                 <h3 className="font-extrabold text-sm text-[#111315]">
-                  Автосервис полного цикла
+                  Об автосервисе
                 </h3>
                 <p className="text-xs text-[#70777D] leading-relaxed">
-                  {serviceCenter.description ||
-                    'Современный автосервис в Новосибирске. Высокоточная диагностика, ремонт ходовой, замена масел, техническое обслуживание любых марок.'}
+                  {serviceCenter.description || 'Описание не заполнено'}
                 </p>
 
-                {/* Amenities checklist */}
+                {/* Real contact facts only */}
                 <div className="pt-2 border-t border-[#E1E4E6] grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-semibold text-[#111315]">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-[#35B86B]" />
-                    <span>Гарантия на работы</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-[#35B86B]" />
-                    <span>Оплата картой и СБП</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-[#35B86B]" />
-                    <span>Комната ожидания и кофе</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-[#35B86B]" />
-                    <span>Видеонаблюдение за постом</span>
-                  </div>
+                  {serviceCenter.phone && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-[#35B86B]" />
+                      <span>{serviceCenter.phone}</span>
+                    </div>
+                  )}
+                  {serviceCenter.website && (
+                    <div className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-[#35B86B]" />
+                      <span>{serviceCenter.website}</span>
+                    </div>
+                  )}
+                  {todayHours && (
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-[#35B86B]" />
+                      <span>
+                        {WEEKDAY_NAMES[todayHours.day_of_week]} {todayHours.open_time}–{todayHours.close_time}
+                      </span>
+                    </div>
+                  )}
+                  {serviceCenter.parking_description && (
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-[#35B86B]" />
+                      <span>{serviceCenter.parking_description}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -165,10 +209,15 @@ export const ScreenServiceDetail: React.FC<ScreenServiceDetailProps> = ({
                 <h3 className="font-extrabold text-sm text-[#111315]">
                   Популярные услуги
                 </h3>
+                {popularServices.length === 0 && (
+                  <div className="bg-white rounded-[16px] border border-dashed border-[#C9CFD4] p-5 text-center">
+                    <p className="text-xs font-bold text-[#111315]">Услуги пока не добавлены</p>
+                  </div>
+                )}
                 <div className="space-y-2">
-                  {popularServices.slice(0, 3).map((s: any, idx: number) => (
+                  {popularServices.slice(0, 3).map((s, idx) => (
                     <div
-                      key={idx}
+                      key={s.id ?? idx}
                       onClick={() => {
                         if (onSelectServiceItem) onSelectServiceItem(s.custom_name);
                         else onBook();
@@ -177,10 +226,11 @@ export const ScreenServiceDetail: React.FC<ScreenServiceDetailProps> = ({
                     >
                       <div>
                         <p className="text-xs font-bold text-[#111315]">{s.custom_name}</p>
-                        <p className="text-[11px] text-[#70777D]">≈ {s.duration_minutes || 45} мин</p>
+                        <p className="text-[11px] text-[#70777D]">≈ {s.duration_minutes} мин</p>
                       </div>
                       <span className="text-xs font-black text-[#111315]">
-                        от {(s.price_from || 1500).toLocaleString('ru-RU')} ₽
+                        {s.is_fixed_price ? '' : 'от '}
+                        {s.price.toLocaleString('ru-RU')} ₽
                       </span>
                     </div>
                   ))}
@@ -192,18 +242,25 @@ export const ScreenServiceDetail: React.FC<ScreenServiceDetailProps> = ({
           {/* Tab 2: Services Full List */}
           {activeTab === 'services' && (
             <div className="space-y-2">
-              {popularServices.map((s: any, idx: number) => (
+              {popularServices.length === 0 && (
+                <div className="bg-white rounded-[16px] border border-dashed border-[#C9CFD4] p-6 text-center">
+                  <p className="text-sm font-bold text-[#111315]">Услуги пока не добавлены</p>
+                  <p className="text-xs text-[#70777D] mt-1">Владелец СТО заполнит прайс чуть позже</p>
+                </div>
+              )}
+              {popularServices.map((s, idx) => (
                 <div
-                  key={idx}
+                  key={s.id ?? idx}
                   onClick={onBook}
                   className="bg-white rounded-[16px] border border-[#E1E4E6] p-4 flex items-center justify-between hover:border-[#111315] cursor-pointer transition-colors"
                 >
                   <div>
                     <h4 className="text-xs font-bold text-[#111315]">{s.custom_name}</h4>
-                    <p className="text-[11px] text-[#70777D]">Время выполнения: ~{s.duration_minutes || 40} мин</p>
+                    <p className="text-[11px] text-[#70777D]">Время выполнения: ~{s.duration_minutes} мин</p>
                   </div>
                   <span className="text-sm font-black text-[#111315]">
-                    от {(s.price_from || 1500).toLocaleString('ru-RU')} ₽
+                    {s.is_fixed_price ? '' : 'от '}
+                    {s.price.toLocaleString('ru-RU')} ₽
                   </span>
                 </div>
               ))}
@@ -213,28 +270,52 @@ export const ScreenServiceDetail: React.FC<ScreenServiceDetailProps> = ({
           {/* Tab 3: Reviews */}
           {activeTab === 'reviews' && (
             <div className="space-y-3">
-              <div className="bg-white rounded-[16px] border border-[#E1E4E6] p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-[#111315]">Алексей М.</span>
-                  <span className="text-[11px] text-[#70777D]">2 дня назад</span>
+              {reviews.length === 0 && (
+                <div className="bg-white rounded-[16px] border border-dashed border-[#C9CFD4] p-6 text-center">
+                  <p className="text-sm font-bold text-[#111315]">Отзывов пока нет</p>
+                  <p className="text-xs text-[#70777D] mt-1">
+                    Отзывы появятся здесь после модерации
+                  </p>
                 </div>
-                <div className="text-[#F2B84B] text-xs">★★★★★</div>
-                <p className="text-xs text-[#70777D] leading-relaxed">
-                  Записался через STOBOOK без звонков на замену колодок. Приехал вовремя, мастер сразу загнал машину на подъёмник. Всё чётко!
-                </p>
-              </div>
+              )}
+              {reviews.map((review) => (
+                <div key={review.id} className="bg-white rounded-[16px] border border-[#E1E4E6] p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-[#111315]">
+                      {review.customer_name || 'Анонимный клиент'}
+                    </span>
+                    <span className="text-[11px] text-[#70777D]">
+                      {new Date(review.created_at).toLocaleDateString('ru-RU')}
+                    </span>
+                  </div>
+                  <div className="text-[#F2B84B] text-xs">
+                    {'★'.repeat(review.rating)}
+                    {'☆'.repeat(5 - review.rating)}
+                  </div>
+                  {review.comment && (
+                    <p className="text-xs text-[#70777D] leading-relaxed">{review.comment}</p>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 
           {/* Tab 4: Photos */}
           {activeTab === 'photos' && (
-            <div className="grid grid-cols-2 gap-2">
-              {photos.map((src, i) => (
-                <div key={i} className="aspect-4/3 rounded-[16px] overflow-hidden bg-slate-200">
-                  <img src={src} alt="STO" className="w-full h-full object-cover" />
-                </div>
-              ))}
-            </div>
+            photos.length === 0 ? (
+              <div className="bg-white rounded-[16px] border border-dashed border-[#C9CFD4] p-6 text-center">
+                <p className="text-sm font-bold text-[#111315]">Фото пока не добавлены</p>
+                <p className="text-xs text-[#70777D] mt-1">Владелец СТО загрузит фотографии позже</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {photos.map((src, i) => (
+                  <div key={i} className="aspect-4/3 rounded-[16px] overflow-hidden bg-slate-200">
+                    <img src={src} alt="STO" className="w-full h-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </div>
       </div>

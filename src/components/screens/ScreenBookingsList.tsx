@@ -200,12 +200,15 @@ export const ScreenBookingsList: React.FC<ScreenBookingsListProps> = ({
                   </div>
 
                   {/* Price and actions */}
-                  <div className="flex items-center justify-between pt-2 border-t border-[#E1E4E6]/60">
-                    <span className="text-xs text-[#70777D]">Стоимость услуги:</span>
-                    <span className="text-sm font-black text-[#111315]">
-                      от {(app.service?.price || 2500).toLocaleString('ru-RU')} ₽
-                    </span>
-                  </div>
+                  {app.service?.price != null && (
+                    <div className="flex items-center justify-between pt-2 border-t border-[#E1E4E6]/60">
+                      <span className="text-xs text-[#70777D]">Стоимость услуги:</span>
+                      <span className="text-sm font-black text-[#111315]">
+                        {app.service.is_fixed_price ? '' : 'от '}
+                        {app.service.price.toLocaleString('ru-RU')} ₽
+                      </span>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <button

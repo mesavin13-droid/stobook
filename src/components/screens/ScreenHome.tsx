@@ -2,9 +2,10 @@ import React from 'react';
 import { SearchBar, FilterChip, RatingBadge, StatusBadge, Button } from '../design-system';
 import { Bell, MapPin, ChevronRight, Wrench, Sparkles, SlidersHorizontal, ArrowRight, ShieldCheck } from 'lucide-react';
 import { Vehicle, ServiceCenter } from '../../types';
+import { availabilityBadge, formatDistance, formatMinPrice, nextSlotLabel } from './centerMeta';
 
 export interface ScreenHomeProps {
-  vehicle: Vehicle;
+  vehicle: Vehicle | null;
   serviceCenters: ServiceCenter[];
   onOpenSearch: (initialQuery?: string) => void;
   onSelectServiceCenter: (sc: ServiceCenter) => void;
@@ -60,36 +61,54 @@ export const ScreenHome: React.FC<ScreenHomeProps> = ({
         </button>
       </div>
 
-      {/* Car Card Widget: 🚗 Toyota Camry 2021 124 000 км [Сменить] */}
-      <div className="bg-white rounded-[18px] border border-[#E1E4E6] p-4 shadow-xs flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-[14px] bg-[#ECEFF1] overflow-hidden shrink-0 flex items-center justify-center">
-            {vehicle.photo_url ? (
-              <img src={vehicle.photo_url} alt={vehicle.brand} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-xl">🚗</span>
-            )}
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-sm text-[#111315]">
-                {vehicle.brand} {vehicle.model}
-              </span>
-              <span className="text-xs text-[#70777D]">{vehicle.year}</span>
+      {/* Car Card Widget */}
+      {vehicle ? (
+        <div className="bg-white rounded-[18px] border border-[#E1E4E6] p-4 shadow-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-[14px] bg-[#ECEFF1] overflow-hidden shrink-0 flex items-center justify-center">
+              {vehicle.photo_url ? (
+                <img src={vehicle.photo_url} alt={vehicle.brand} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-xl">🚗</span>
+              )}
             </div>
-            <p className="text-xs text-[#70777D] font-mono mt-0.5">
-              {vehicle.mileage.toLocaleString('ru-RU')} км
-            </p>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-sm text-[#111315]">
+                  {vehicle.brand} {vehicle.model}
+                </span>
+                <span className="text-xs text-[#70777D]">{vehicle.year}</span>
+              </div>
+              <p className="text-xs text-[#70777D] font-mono mt-0.5">
+                {vehicle.mileage.toLocaleString('ru-RU')} км
+              </p>
+            </div>
           </div>
-        </div>
 
+          <button
+            onClick={onChangeVehicle}
+            className="px-3 py-1.5 rounded-[12px] bg-[#ECEFF1] hover:bg-[#E1E4E6] text-xs font-bold text-[#111315] transition-colors"
+          >
+            Сменить
+          </button>
+        </div>
+      ) : (
         <button
           onClick={onChangeVehicle}
-          className="px-3 py-1.5 rounded-[12px] bg-[#ECEFF1] hover:bg-[#E1E4E6] text-xs font-bold text-[#111315] transition-colors"
+          className="w-full bg-white rounded-[18px] border border-dashed border-[#C9CFD4] p-4 flex items-center justify-between gap-3 text-left hover:border-[#111315] transition-colors"
         >
-          Сменить
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-[14px] bg-[#ECEFF1] shrink-0 flex items-center justify-center text-xl">
+              🚗
+            </div>
+            <div>
+              <p className="font-extrabold text-sm text-[#111315]">Добавьте автомобиль</p>
+              <p className="text-xs text-[#70777D]">Нужен для подбора услуг и записи</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-[#70777D] shrink-0" />
         </button>
-      </div>
+      )}
 
       {/* Main Action Block: "Что нужно сделать?" + Search with Mic */}
       <div className="space-y-2.5">
@@ -173,30 +192,35 @@ export const ScreenHome: React.FC<ScreenHomeProps> = ({
                   </div>
                   <div className="flex items-center gap-2 text-xs text-[#70777D] mt-1">
                     <RatingBadge rating={sc.rating} count={sc.reviews_count} />
-                    <span>·</span>
-                    <span className="flex items-center gap-0.5">
-                      <MapPin className="w-3 h-3 text-[#70777D]" />
-                      {sc.distance_km || 1.7} км
-                    </span>
+                    {formatDistance(sc.distance_km) && (
+                      <>
+                        <span>·</span>
+                        <span className="flex items-center gap-0.5">
+                          <MapPin className="w-3 h-3 text-[#70777D]" />
+                          {formatDistance(sc.distance_km)}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <span className="text-xs text-[#70777D] block">от</span>
-                  <span className="text-sm font-black text-[#111315]">
-                    {(sc.minPrice || 1500).toLocaleString('ru-RU')} ₽
-                  </span>
-                </div>
+                {formatMinPrice(sc.minPrice) && (
+                  <div className="text-right">
+                    <span className="text-sm font-black text-[#111315]">
+                      {formatMinPrice(sc.minPrice)}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Status and nearest time capsules */}
               <div className="flex items-center justify-between pt-1 border-t border-[#E1E4E6]/60 text-xs">
                 <StatusBadge
-                  status={sc.availabilityStatus === 'today' ? 'today' : 'tomorrow'}
-                  text={sc.availabilityStatus === 'today' ? 'Сегодня свободно' : 'Свободно завтра'}
+                  status={availabilityBadge(sc).status}
+                  text={availabilityBadge(sc).text}
                 />
                 <span className="text-[11px] font-mono font-semibold text-[#70777D]">
-                  Ближайшее: {sc.available_today_slots?.[0] || '15:30'}
+                  {nextSlotLabel(sc.available_today_slots) ?? 'Нет окон на сегодня'}
                 </span>
               </div>
 
