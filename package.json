@@ -13,7 +13,8 @@
     "test": "tsx test/run-tests.ts",
     "test:http": "tsx test/rbac-http.ts",
     "test:postgres": "tsx test/postgres-repository.ts",
-    "db:migrate": "tsx scripts/migrate.ts"
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:schedule-reminders": "tsx scripts/schedule-reminders.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

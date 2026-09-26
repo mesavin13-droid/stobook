@@ -132,7 +132,10 @@ CRON_SECRET="change-me-to-a-random-cron-secret"
 npm install
 
 # Применение миграций к базе (нужен DATABASE_URL)
-npm run migrate
+npm run db:migrate
+
+# Регистрация cron-задачи напоминаний в Postgres (нужны APP_URL и CRON_SECRET)
+npm run db:schedule-reminders
 
 # Запуск приложения (сервер + Vite dev middleware на порту 3000)
 npm run dev
@@ -192,7 +195,7 @@ npm start
 ## 7. Деплой
 
 ### Supabase
-1. Создайте проект и примените миграции: `npm run migrate`.
+1. Создайте проект и примените миграции: `npm run db:migrate`.
 2. Возьмите `DATABASE_URL` в разделе *Project Settings → Database*. Если ваша сеть без IPv6, берите **session pooler** (`aws-0-<region>.pooler.supabase.com:5432`), а не transaction pooler.
 
 ### Vercel
@@ -202,4 +205,16 @@ npm start
 3. Проверка после деплоя: `GET /api/health` → `{"status":"ok","database":{"ok":true,"kind":"postgres"}}`.
 
 ### Cron напоминаний
-План Hobby не позволяет запускать cron каждую минуту, поэтому расписание вынесено в GitHub Actions — `.github/workflows/reminder-cron.yml` каждые 15 минут вызывает `POST /api/cron/reminders` с заголовком `Authorization: Bearer $CRON_SECRET`. Секреты `APP_URL` и `CRON_SECRET` задаются в *Settings → Secrets and variables → Actions*.
+План Vercel Hobby допускает cron не чаще раза в сутки, а напоминания нужно слать каждые 15 минут. Поэтому расписание живёт в самой базе: миграция `005_reminder_scheduler.sql` включает `pg_cron` и `pg_net`, а `npm run db:schedule-reminders` регистрирует задачу `stobook-reminder-sweep` с расписанием `*/15 * * * *`, которая дёргает `POST /api/cron/reminders` с заголовком `Authorization: Bearer $CRON_SECRET`. Токен подставляется из окружения и в репозиторий не попадает.
+
+Проверка и отключение:
+
+```sql
+select j.jobname, d.status, d.return_message, d.start_time
+from cron.job_run_details d join cron.job j on j.jobid = d.jobid
+order by d.start_time desc limit 10;
+
+select cron.unschedule('stobook-reminder-sweep');
+```
+
+Альтернатива — GitHub Actions: `.github/workflows/reminder-cron.yml` делает тот же запрос раз в 15 минут и требует секреты `APP_URL` и `CRON_SECRET` в *Settings → Secrets and variables → Actions*.
