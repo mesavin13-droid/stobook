@@ -17,6 +17,53 @@ export class LeafletMapProvider implements MapProvider {
   private markersMap = new Map<string, L.Marker>();
   private isDestroyed = false;
   private currentContainer: HTMLElement | null = null;
+  private baseLayer: L.TileLayer | null = null;
+  private tileErrorCount = 0;
+  private usingFallbackTiles = false;
+
+  // Free tile sources without an API key or watermark. OpenStreetMap is
+  // primary; OpenTopoMap (separate infrastructure) takes over if tiles fail.
+  private static readonly PRIMARY_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  private static readonly FALLBACK_TILES = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
+  private static readonly PRIMARY_ATTRIBUTION =
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+  private static readonly FALLBACK_ATTRIBUTION =
+    '&copy; <a href="https://opentopomap.org">OpenTopoMap</a> ' +
+    '(<a href="https://www.openstreetmap.org/copyright">OSM</a>)';
+
+  private installBaseLayer(): void {
+    if (!this.map) return;
+
+    if (this.baseLayer) {
+      try {
+        this.map.removeLayer(this.baseLayer);
+      } catch (e) {}
+      this.baseLayer = null;
+    }
+
+    const isFallback = this.usingFallbackTiles;
+    const layer = L.tileLayer(
+      isFallback ? LeafletMapProvider.FALLBACK_TILES : LeafletMapProvider.PRIMARY_TILES,
+      {
+        maxZoom: isFallback ? 17 : 19,
+        attribution: isFallback
+          ? LeafletMapProvider.FALLBACK_ATTRIBUTION
+          : LeafletMapProvider.PRIMARY_ATTRIBUTION
+      }
+    );
+
+    layer.on('tileerror', () => {
+      this.tileErrorCount += 1;
+      if (this.tileErrorCount >= 6 && !this.usingFallbackTiles && !this.isDestroyed) {
+        this.usingFallbackTiles = true;
+        this.tileErrorCount = 0;
+        this.installBaseLayer();
+      }
+    });
+
+    layer.addTo(this.map);
+    this.baseLayer = layer;
+  }
 
   async renderMap(container: HTMLElement, center: { lat: number; lng: number }, zoom: number = 13): Promise<void> {
     this.isDestroyed = false;
@@ -31,6 +78,9 @@ export class LeafletMapProvider implements MapProvider {
       } catch (e) {}
       this.map = null;
     }
+    this.baseLayer = null;
+    this.tileErrorCount = 0;
+    this.usingFallbackTiles = false;
 
     // Leaflet assigns an internal property `_leaflet_id` to container.
     // Reset it so Leaflet won't throw "Map container is already initialized"
@@ -45,11 +95,10 @@ export class LeafletMapProvider implements MapProvider {
         attributionControl: false
       }).setView([center.lat, center.lng], zoom);
 
-      // High quality modern tile layer (CartoDB Positron / OSM clean)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        maxZoom: 19,
-        subdomains: 'abcd'
-      }).addTo(this.map);
+      // Attribution is required by the OSM license; the default bottom-right
+      // position is hidden behind the bottom sheet, so pin it top-right.
+      L.control.attribution({ position: 'topright', prefix: false }).addTo(this.map);
+      this.installBaseLayer();
     } catch (err: any) {
       console.warn('Leaflet initialization handled:', err?.message);
       if ((container as any)._leaflet_id) {
@@ -59,10 +108,8 @@ export class LeafletMapProvider implements MapProvider {
             zoomControl: true,
             attributionControl: false
           }).setView([center.lat, center.lng], zoom);
-          L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            maxZoom: 19,
-            subdomains: 'abcd'
-          }).addTo(this.map);
+          L.control.attribution({ position: 'topright', prefix: false }).addTo(this.map);
+          this.installBaseLayer();
         } catch (retryErr) {
           console.error('Failed to retry Leaflet init:', retryErr);
         }
@@ -152,6 +199,9 @@ export class LeafletMapProvider implements MapProvider {
 
   destroy(): void {
     this.isDestroyed = true;
+    this.baseLayer = null;
+    this.tileErrorCount = 0;
+    this.usingFallbackTiles = false;
     if (this.map) {
       try {
         this.map.remove();

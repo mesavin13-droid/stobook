@@ -64,17 +64,6 @@ export const ScreenMap: React.FC<ScreenMapProps> = ({
 
     provider
       .renderMap(container, { lat: 55.018, lng: 82.935 }, 13)
-      .then(() => {
-        // Add markers
-        filteredCenters.forEach((sc) => {
-          const markerItem = markersData.find((m) => m.id === sc.id);
-          if (markerItem) {
-            provider.addMarker(markerItem, () => {
-              setSelectedCenter(sc);
-            });
-          }
-        });
-      })
       .catch((e: any) => console.warn('Map initialization notice:', e));
 
     return () => {
@@ -82,19 +71,21 @@ export const ScreenMap: React.FC<ScreenMapProps> = ({
     };
   }, []);
 
-  // Update markers when filters change
+  // Sync markers with the current data and filters.
+  // Depends on serviceCenters so markers appear once the fetch resolves.
   useEffect(() => {
-    if (!mapProviderRef.current) return;
-    mapProviderRef.current.clearMarkers();
+    const provider = mapProviderRef.current;
+    if (!provider) return;
+    provider.clearMarkers();
     filteredCenters.forEach((sc) => {
       const markerItem = markersData.find((m) => m.id === sc.id);
       if (markerItem) {
-        mapProviderRef.current.addMarker(markerItem, () => {
+        provider.addMarker(markerItem, () => {
           setSelectedCenter(sc);
         });
       }
     });
-  }, [activeFilter, searchQuery]);
+  }, [activeFilter, searchQuery, serviceCenters]);
 
   return (
     <div className="relative w-full h-[calc(100vh-68px)] min-h-[520px] flex flex-col overflow-hidden bg-[#ECEFF1]">

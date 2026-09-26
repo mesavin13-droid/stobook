@@ -57,6 +57,22 @@
   scrollbar-width: none;
 }
 
+/* Leaflet attribution: keep the required OSM credit readable but compact,
+   so it fits in the gap above the floating search bar */
+.leaflet-control-attribution {
+  margin: 1px 6px 0 0 !important;
+  font-size: 9px;
+  line-height: 1.2;
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.leaflet-control-attribution a {
+  color: inherit;
+}
+
 /* Clean active state helper for lime buttons */
 .btn-lime {
   background-color: #B8F23A;
