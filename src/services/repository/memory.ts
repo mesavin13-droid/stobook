@@ -5,6 +5,7 @@ import type {
   Master,
   PlatformSettings,
   Profile,
+  Promotion,
   PromotionType,
   Review,
   ServiceBay,
@@ -20,6 +21,8 @@ import type {
   VehicleHistorySettings
 } from '../../types/index.js';
 import { store } from '../store/index.js';
+// RepositoryError — класс, поэтому нужен value-импорт, а не import type.
+import { RepositoryError } from './types.js';
 import {
   DEFAULT_CENTER_HOURS,
   DEFAULT_CENTER_PHOTO,
@@ -38,6 +41,7 @@ import type {
   CreateCenterServiceInput,
   CreateMasterInput,
   HistorySettingsPatch,
+  GrantPromotionInput,
   MasterPatch,
   MutationResult,
   NewTelegramUserInput,
@@ -605,6 +609,60 @@ export class MemoryRepository implements Repository {
 
   async listPromotionTypes(): Promise<PromotionType[]> {
     return store.promotionTypes;
+  }
+
+  async listActivePromotions(): Promise<Promotion[]> {
+    const now = Date.now();
+    return store.promotions.filter(
+      (item) => item.status === 'ACTIVE' && new Date(item.expires_at).getTime() > now
+    );
+  }
+
+  async listPromotionsForCenter(serviceCenterId: string): Promise<Promotion[]> {
+    return store.promotions.filter((item) => item.service_center_id === serviceCenterId);
+  }
+
+  async grantPromotion(input: GrantPromotionInput): Promise<Promotion> {
+    const center = store.serviceCenters.find((item) => item.id === input.serviceCenterId);
+    if (!center) {
+      // RepositoryError, а не Error: клиентские ошибки должны давать 4xx, а не 500.
+      throw new RepositoryError('CENTER_NOT_FOUND', 'Автосервис не найден');
+    }
+    const type = store.promotionTypes.find((item) => item.id === input.promotionTypeId);
+    if (!type) {
+      throw new RepositoryError('PROMOTION_TYPE_NOT_FOUND', 'Вид продвижения не найден или отключён');
+    }
+
+    // Один активный вид на автосервис: иначе в выдаче накапливаются дубли.
+    for (const item of store.promotions) {
+      if (item.service_center_id === input.serviceCenterId && item.status === 'ACTIVE') {
+        item.status = 'REVOKED';
+      }
+    }
+
+    const startedAt = new Date();
+    const hours = input.durationHours ?? type.duration_hours;
+    const promotion: Promotion = {
+      id: randomUUID(),
+      service_center_id: input.serviceCenterId,
+      promotion_type_id: input.promotionTypeId,
+      status: 'ACTIVE',
+      started_at: startedAt.toISOString(),
+      expires_at: new Date(startedAt.getTime() + hours * 60 * 60 * 1000).toISOString(),
+      created_at: startedAt.toISOString()
+    };
+    store.promotions.push(promotion);
+    return promotion;
+  }
+
+  async revokePromotion(promotionId: string): Promise<boolean> {
+    const promotion = store.promotions.find((item) => item.id === promotionId);
+    // Повторное снятие уже отозванного продвижения — это «не найдено»,
+    // иначе ответ не совпадёт с postgres-реализацией, где стоит условие
+    // status = 'ACTIVE'.
+    if (!promotion || promotion.status !== 'ACTIVE') return false;
+    promotion.status = 'REVOKED';
+    return true;
   }
 
   async runReminderCron(): Promise<number> {

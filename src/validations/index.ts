@@ -181,6 +181,18 @@ export const businessHoursSchema = z.object({
     .max(7)
 });
 
+export const grantPromotionSchema = z.object({
+  // Используем idSchema проекта, а не z.string().uuid(): идентификаторы из
+  // справочников не являются UUID четвёртой версии по RFC 4122, и строгая
+  // проверка отклоняла бы их с 400.
+  serviceCenterId: idSchema,
+  promotionTypeId: idSchema,
+  // Срок задаёт администратор: продвижение бесплатное, платить не нужно.
+  durationHours: z.coerce.number().int().min(1).max(24 * 365).optional()
+});
+
+export type GrantPromotionInput = z.infer<typeof grantPromotionSchema>;
+
 export const platformSettingsSchema = z.object({
   trial_days: z.coerce.number().int().min(1).max(365),
   booking_reminder_minutes: z.coerce.number().int().min(10).max(1440),

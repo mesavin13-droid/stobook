@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ServiceCenter, PlatformSettings, SubscriptionPlan, PromotionType } from '../../types';
 import { ShieldCheck, Check, X, Settings, Layers, TrendingUp, Users, Car, Calendar, Sliders } from 'lucide-react';
 import { triggerHaptic } from '../../lib/telegram/webapp';
+import { PromotionManager } from './PromotionManager';
 
 interface AdminDashboardProps {
   onBackToCustomer: () => void;
@@ -117,18 +118,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
           )}
         </button>
-        {settings.monetization_enabled && (
-          <button
-            onClick={() => setActiveTab('tariffs')}
-            className={`py-3 border-b-2 transition-colors ${
-              activeTab === 'tariffs'
-                ? 'border-amber-500 text-slate-900'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Тарифы и Продвижение
-          </button>
-        )}
+        <button
+          onClick={() => setActiveTab('tariffs')}
+          className={`py-3 border-b-2 transition-colors ${
+            activeTab === 'tariffs'
+              ? 'border-amber-500 text-slate-900'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          Тарифы и Продвижение
+        </button>
         <button
           onClick={() => setActiveTab('settings')}
           className={`py-3 border-b-2 transition-colors flex items-center gap-1.5 ${
@@ -278,56 +277,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
         </div>
       )}
 
-      {/* TARIFFS & PROMOTIONS (Sections 45 & 47) */}
-      {activeTab === 'tariffs' && settings.monetization_enabled && (
-        <div className="space-y-6">
-          {/* Subscription Plans */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
-            <h3 className="font-extrabold text-sm text-slate-900 mb-3">Тарифные планы для автосервисов</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
-                <span className="font-black text-sm text-slate-900">Базовый</span>
-                <p className="text-xl font-extrabold text-slate-900">3 900 ₽ <span className="text-xs font-normal text-slate-500">/ 30 дней</span></p>
-                <p className="text-xs text-slate-600">Для сервисов до 2 постов. Онлайн-запись и Telegram-уведомления.</p>
-              </div>
-
-              <div className="p-4 rounded-xl border-2 border-amber-500 bg-amber-50/30 space-y-2 relative">
-                <span className="absolute top-2 right-2 text-[10px] font-black bg-amber-500 text-slate-950 px-2 py-0.5 rounded">ХИТ</span>
-                <span className="font-black text-sm text-slate-900">Профессиональный</span>
-                <p className="text-xl font-extrabold text-slate-900">7 900 ₽ <span className="text-xs font-normal text-slate-500">/ 30 дней</span></p>
-                <p className="text-xs text-slate-600">До 6 постов, приоритетная выдача, SMS и Web Push клиентам.</p>
-              </div>
-
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
-                <span className="font-black text-sm text-slate-900">Премиум</span>
-                <p className="text-xl font-extrabold text-slate-900">14 900 ₽ <span className="text-xs font-normal text-slate-500">/ 30 дней</span></p>
-                <p className="text-xs text-slate-600">Безлимит постов, интеграция с 1С, максимальный буст на карте.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Promotion Types */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
-            <h3 className="font-extrabold text-sm text-slate-900 mb-3">Виды платного продвижения (Promotions)</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center">
-                <div>
-                  <p className="font-bold text-xs text-slate-900">MAP_BOOST (Выделенный пин на карте)</p>
-                  <p className="text-[11px] text-slate-500">Увеличенный золотой пин, логотип на карте 72 часа</p>
-                </div>
-                <span className="text-xs font-black text-slate-900">990 ₽</span>
-              </div>
-
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center">
-                <div>
-                  <p className="font-bold text-xs text-slate-900">FEATURED_CARD (Топ «Мне нужно сегодня»)</p>
-                  <p className="text-[11px] text-slate-500">Первое место при поиске свободных слотов</p>
-                </div>
-                <span className="text-xs font-black text-slate-900">1 490 ₽</span>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* TARIFFS & PROMOTIONS */}
+      {activeTab === 'tariffs' && (
+        <PromotionManager
+          serviceCenters={serviceCenters}
+          promotionTypes={metrics?.promotionTypes ?? []}
+          subscriptionPlans={metrics?.subscriptionPlans ?? []}
+          onChanged={loadData}
+        />
       )}
 
       {/* PLATFORM SETTINGS (Section 80 & 81) */}

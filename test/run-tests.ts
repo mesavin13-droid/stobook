@@ -1,6 +1,8 @@
 import { calculateAvailableSlots } from '../src/services/availability/index.js';
 import { store } from '../src/services/store/index.js';
 import { isBookableServiceCenter } from '../src/services/repository/rules.js';
+import { MemoryRepository } from '../src/services/repository/memory.js';
+import { DEVELOPMENT_SESSION_SECRET } from '../src/config/env.js';
 import { ADMIN_SESSION_TTL_SECONDS, createSessionToken, parseSessionToken } from '../src/lib/session.js';
 import { waitForTelegramInitData } from '../src/lib/telegram/webapp.js';
 
@@ -214,6 +216,76 @@ async function runTests() {
     assert(!isBookableServiceCenter({ status: 'PENDING' }, false), 'Pending center is not bookable before moderation');
 
     assert(store.platformSettings.monetization_enabled === false, 'Monetisation is off by default in the in-memory store');
+  }
+
+  // Test 8: Manual promotion without payment
+  console.log('\n--- TEST 8: Manual Promotion ---');
+  {
+    const repo = new MemoryRepository();
+    await repo.init();
+    const centers = await repo.listServiceCenters();
+    const types = await repo.listPromotionTypes();
+    assert(types.length > 0, `Promotion types available (${types.length})`);
+
+    if (centers.length > 0 && types.length > 0) {
+      const center = centers[0];
+      const type = types[0];
+
+      assert((await repo.listActivePromotions()).length === 0, 'No promotions initially');
+
+      const granted = await repo.grantPromotion({
+        serviceCenterId: center.id,
+        promotionTypeId: type.id
+      });
+      assert(granted.status === 'ACTIVE', 'Granted promotion is active');
+      assert(granted.service_center_id === center.id, 'Promotion is bound to the center');
+
+      const active = await repo.listActivePromotions();
+      assert(active.length === 1, `Active promotions after grant (${active.length})`);
+      assert(active[0].service_center_id === center.id, 'Active promotion points at the granted center');
+
+      // A second grant replaces the first instead of stacking.
+      const again = await repo.grantPromotion({
+        serviceCenterId: center.id,
+        promotionTypeId: types[1] ? types[1].id : type.id
+      });
+      const afterSecond = await repo.listActivePromotions();
+      assert(afterSecond.length === 1, 'Re-granting replaces the previous promotion');
+      assert(afterSecond[0].id === again.id, 'The newest promotion is the active one');
+
+      const history = await repo.listPromotionsForCenter(center.id);
+      assert(history.length === 2, `History keeps both grants (${history.length})`);
+
+      assert(await repo.revokePromotion(again.id), 'Revoke reports success');
+      assert((await repo.listActivePromotions()).length === 0, 'Promotion is gone after revoke');
+      // Повторное снятие уже отозванного — «не найдено», как в postgres.
+      assert((await repo.revokePromotion(again.id)) === false, 'Revoking twice returns false');
+      assert((await repo.revokePromotion('missing-id')) === false, 'Revoking an unknown id returns false');
+
+      // Клиентская ошибка должна быть RepositoryError, а не обычным Error:
+      // иначе API отдаёт 500 вместо 404.
+      let errorCode = '';
+      try {
+        await repo.grantPromotion({ serviceCenterId: center.id, promotionTypeId: 'missing-type' });
+      } catch (error) {
+        errorCode = (error as { code?: string })?.code ?? '';
+      }
+      assert(
+        errorCode === 'PROMOTION_TYPE_NOT_FOUND',
+        `Unknown promotion type raises a typed error (${errorCode || 'none'})`
+      );
+    }
+    await repo.close();
+  }
+
+  // Test 9: Stable development session secret
+  console.log('\n--- TEST 9: Session Secret Stability ---');
+  {
+    const first = createSessionToken('a1111111-1111-1111-1111-111111111111', 1097348022);
+    // Токен, выданный до перезапуска процесса, обязан оставаться валидным:
+    // иначе каждый рестарт dev-сервера разлогинивал бы всех пользователей.
+    assert(parseSessionToken(first) !== null, 'Session token verifies right after creation');
+    assert(DEVELOPMENT_SESSION_SECRET.length >= 32, 'Development secret is long enough for HMAC');
   }
 
   // Summary

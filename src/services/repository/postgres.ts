@@ -8,6 +8,7 @@ import type {
   Master,
   PlatformSettings,
   Profile,
+  Promotion,
   PromotionType,
   Review,
   ServiceBay,
@@ -31,6 +32,7 @@ import {
 } from './defaults.js';
 import {
   DEFAULT_PLATFORM_SETTINGS,
+  RepositoryError,
   type AppointmentFilter,
   type BayPatch,
   type BookingParams,
@@ -41,6 +43,7 @@ import {
   type CreateCenterServiceInput,
   type CreateMasterInput,
   type HistorySettingsPatch,
+  type GrantPromotionInput,
   type MasterPatch,
   type MutationResult,
   type NewTelegramUserInput,
@@ -70,15 +73,9 @@ const OWNER_SCOPED_TABLES = new Set<string>(['service_center_services', 'service
 types.setTypeParser(PG_TYPE_DATE, (value) => value);
 types.setTypeParser(PG_TYPE_NUMERIC, (value) => (value === null ? null : Number.parseFloat(value)));
 
-export class RepositoryError extends Error {
-  readonly code: string;
-
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = 'RepositoryError';
-    this.code = code;
-  }
-}
+// RepositoryError живёт в types.ts, чтобы его мог использовать и memory-репозиторий
+// без импорта pg. Реэкспорт сохраняет существующие импорты из этого модуля.
+export { RepositoryError } from './types.js';
 
 function toIso(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
@@ -337,6 +334,18 @@ function mapPromotionType(row: any): PromotionType {
     price: toNumber(row.price),
     duration_hours: toNumber(row.duration_hours),
     active: toBoolean(row.active)
+  };
+}
+
+function mapPromotion(row: any): Promotion {
+  return {
+    id: row.id,
+    service_center_id: row.service_center_id,
+    promotion_type_id: row.promotion_type_id,
+    status: row.status,
+    started_at: new Date(row.started_at).toISOString(),
+    expires_at: new Date(row.expires_at).toISOString(),
+    created_at: new Date(row.created_at).toISOString()
   };
 }
 
@@ -1592,6 +1601,72 @@ export class PostgresRepository implements Repository {
   async listPromotionTypes(): Promise<PromotionType[]> {
     const { rows } = await this.pool.query('SELECT * FROM promotion_types WHERE active ORDER BY price ASC');
     return rows.map(mapPromotionType);
+  }
+
+  async listActivePromotions(): Promise<Promotion[]> {
+    const { rows } = await this.pool.query(
+      `SELECT * FROM promotions
+        WHERE status = 'ACTIVE' AND expires_at > NOW()
+        ORDER BY expires_at DESC`
+    );
+    return rows.map(mapPromotion);
+  }
+
+  async listPromotionsForCenter(serviceCenterId: string): Promise<Promotion[]> {
+    const { rows } = await this.pool.query(
+      'SELECT * FROM promotions WHERE service_center_id = $1 ORDER BY created_at DESC',
+      [serviceCenterId]
+    );
+    return rows.map(mapPromotion);
+  }
+
+  async grantPromotion(input: GrantPromotionInput): Promise<Promotion> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Один активный вид на автосервис: снимаем прежний, чтобы в выдаче не
+      // было дубликатов. Срок по умолчанию берём из promotion_types.
+      const revoked = await client.query(
+        `UPDATE promotions SET status = 'REVOKED'
+          WHERE service_center_id = $1 AND status = 'ACTIVE'`,
+        [input.serviceCenterId]
+      );
+
+      const { rows } = await client.query(
+        `INSERT INTO promotions (service_center_id, promotion_type_id, status, started_at, expires_at)
+         SELECT $1, id, 'ACTIVE', NOW(),
+                NOW() + (COALESCE($3, duration_hours) || ' hours')::interval
+           FROM promotion_types
+          WHERE id = $2 AND active
+         RETURNING *`,
+        [input.serviceCenterId, input.promotionTypeId, input.durationHours ?? null]
+      );
+
+      if (rows.length === 0) {
+        await client.query('ROLLBACK');
+        throw new RepositoryError('PROMOTION_TYPE_NOT_FOUND', 'Вид продвижения не найден или отключён');
+      }
+
+      await client.query('COMMIT');
+      if (revoked.rowCount && revoked.rowCount > 0) {
+        console.log(`promotion: снят прежний статус для ${input.serviceCenterId}`);
+      }
+      return mapPromotion(rows[0]);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async revokePromotion(promotionId: string): Promise<boolean> {
+    const { rowCount } = await this.pool.query(
+      `UPDATE promotions SET status = 'REVOKED' WHERE id = $1 AND status = 'ACTIVE'`,
+      [promotionId]
+    );
+    return (rowCount ?? 0) > 0;
   }
 
   async runReminderCron(): Promise<number> {

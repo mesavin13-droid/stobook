@@ -6,6 +6,7 @@ import type {
   Master,
   PlatformSettings,
   Profile,
+  Promotion,
   PromotionType,
   Review,
   ServiceBay,
@@ -22,6 +23,21 @@ import type {
 } from '../../types/index.js';
 
 export type RepositoryKind = 'memory' | 'postgres';
+
+/**
+ * Ошибка репозитория с машиночитаемым кодом. Клиентские ошибки (нет такого
+ * автосервиса или вида продвижения) должны приходить как 4xx, а не как 500,
+ * поэтому репозитории бросают именно этот тип, а не обычный Error.
+ */
+export class RepositoryError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'RepositoryError';
+    this.code = code;
+  }
+}
 
 export interface RepositoryHealth {
   ok: boolean;
@@ -95,6 +111,16 @@ export interface ServiceCenterCounts {
   active: number;
   pending: number;
   blocked: number;
+}
+
+export interface GrantPromotionInput {
+  serviceCenterId: string;
+  promotionTypeId: string;
+  /**
+   * Срок действия в часах. Если не задан, берётся из promotion_types.duration_hours.
+   * Админ выдаёт продвижение бесплатно, поэтому срок задаёт он.
+   */
+  durationHours?: number;
 }
 
 export interface RegisterServiceCenterInput {
@@ -291,6 +317,24 @@ export interface Repository {
   setPlatformSettings(settings: PlatformSettings): Promise<PlatformSettings>;
   listSubscriptionPlans(): Promise<SubscriptionPlan[]>;
   listPromotionTypes(): Promise<PromotionType[]>;
+
+  /**
+   * Продвижения, которые действуют прямо сейчас. Используется для выдачи
+   * метки «промо» в карточках и в выдаче.
+   */
+  listActivePromotions(): Promise<Promotion[]>;
+
+  /** Все продвижения автосервиса, включая истёкшие и отозванные. */
+  listPromotionsForCenter(serviceCenterId: string): Promise<Promotion[]>;
+
+  /**
+   * Выдать продвижение. Платёж не требуется: продвижение включает
+   * модератор, поэтому срок и вид задаёт администратор.
+   */
+  grantPromotion(input: GrantPromotionInput): Promise<Promotion>;
+
+  /** Снять продвижение. Возвращает false, если записи не было. */
+  revokePromotion(promotionId: string): Promise<boolean>;
 
   runReminderCron(): Promise<number>;
 }

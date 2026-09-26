@@ -1,5 +1,20 @@
 import { randomBytes } from 'node:crypto';
 
+/**
+ * Запасной секрет подписи сессий для локальной разработки.
+ *
+ * Раньше и здесь, и в lib/session.ts генерировался случайный секрет на каждый
+ * старт процесса. Из-за этого перезапуск dev-сервера разлогинивал всех
+ * пользователей, а сессию нельзя было подписать снаружи процесса (тесты,
+ * скрипты) — токен получался невалидным.
+ *
+ * Секрет фиксированный и используется ТОЛЬКО когда SESSION_SECRET не задан.
+ * В production путь недостижим: readSessionSecret() добавляет ошибку
+ * конфигурации, а getSessionSecret() бросает исключение. Поэтому в бою эта
+ * константа не используется.
+ */
+export const DEVELOPMENT_SESSION_SECRET = 'stobook-development-only-secret-not-for-production';
+
 export type DatabaseMode = 'memory' | 'postgres';
 
 export interface AppEnv {
@@ -76,7 +91,9 @@ function readSessionSecret(
     if (isProduction) {
       problems.push(`SESSION_SECRET обязателен в production (минимум ${MIN_SESSION_SECRET_LENGTH} символов)`);
     }
-    return randomBytes(32).toString('hex');
+    // В development возвращаем стабильный секрет, а не случайный: иначе
+    // каждый перезапуск сервера аннулировал бы все сессии пользователей.
+    return DEVELOPMENT_SESSION_SECRET;
   }
   if (raw.length < MIN_SESSION_SECRET_LENGTH) {
     problems.push(`SESSION_SECRET должен быть не короче ${MIN_SESSION_SECRET_LENGTH} символов`);

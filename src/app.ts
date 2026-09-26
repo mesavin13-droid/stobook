@@ -23,6 +23,7 @@ import {
   bookingCreateSchema,
   businessHoursSchema,
   completeServiceSchema,
+  grantPromotionSchema,
   masterCreateSchema,
   masterPatchSchema,
   ownerCenterProfileSchema,
@@ -39,7 +40,6 @@ import {
 } from './validations/index.js';
 
 const DEMO_CUSTOMER_ID = 'a1111111-1111-1111-1111-111111111111';
-const PROMOTED_CENTER_ID = 'c0010000-0000-0000-0000-000000000001';
 const NOVOSIBIRSK = { latitude: 55.0084, longitude: 82.9357 };
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const MAX_AUTH_ATTEMPTS = 20;
@@ -315,7 +315,14 @@ export function createApp({ repository, env }: AppDependencies): Express {
       const results = [];
       // Настройки читаем один раз до цикла: иначе на каждый автосервис
       // уходил бы отдельный запрос за ними.
-      const { monetization_enabled: monetizationEnabled } = await repository.getPlatformSettings();
+      const [{ monetization_enabled: monetizationEnabled }, activePromotions] = await Promise.all([
+        repository.getPlatformSettings(),
+        repository.listActivePromotions()
+      ]);
+      // Продвижение выдаёт администратор (см. админку), поэтому метка «промо»
+      // не зависит от флага монетизации: пока платформа бесплатная, выдавать
+      // её можно без оплаты. Раньше здесь был жёстко зашитый id одного центра.
+      const promotedCenterIds = new Set(activePromotions.map((item) => item.service_center_id));
 
       for (const center of centers) {
         if (!isBookableServiceCenter(center, monetizationEnabled)) continue;
@@ -352,9 +359,7 @@ export function createApp({ repository, env }: AppDependencies): Express {
           availabilityStatus,
           available_today_slots: availableToday,
           minPrice,
-          // Пока монетизация выключена, платного продвижения на платформе
-          // нет, поэтому метку «промо» не показываем ни одному центру.
-          is_promoted: monetizationEnabled && center.id === PROMOTED_CENTER_ID
+          is_promoted: promotedCenterIds.has(center.id)
         });
       }
 
@@ -1154,6 +1159,52 @@ export function createApp({ repository, env }: AppDependencies): Express {
 
   // Пока монетизация выключена, прайс-листы платформ не отдаются: платформа
   // ничего не продаёт, и публичные цены только сбивают с толку.
+  // Продвижение выдаёт администратор. Платёж не требуется: пока платформа
+  // бесплатная, это инструмент модерации, а не продажа. Эндпоинты доступны
+  // независимо от флага монетизации.
+  app.get(
+    '/api/admin/promotions',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const centerId = getQueryString(req.query.serviceCenterId);
+      const promotions = centerId
+        ? await repository.listPromotionsForCenter(centerId)
+        : [];
+      const types = await repository.listPromotionTypes();
+      res.json({ promotions, promotionTypes: types });
+    })
+  );
+
+  app.post(
+    '/api/admin/promotions',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = grantPromotionSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных продвижения' });
+        return;
+      }
+      const promotion = await repository.grantPromotion(parse.data);
+      res.status(201).json({ success: true, promotion });
+    })
+  );
+
+  app.delete(
+    '/api/admin/promotions/:id',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const revoked = await repository.revokePromotion(req.params.id);
+      if (!revoked) {
+        res.status(404).json({ error: 'Активное продвижение не найдено' });
+        return;
+      }
+      res.json({ success: true });
+    })
+  );
+
   app.get(
     '/api/subscriptions/plans',
     wrap(async (_req, res) => {
@@ -1174,11 +1225,30 @@ export function createApp({ repository, env }: AppDependencies): Express {
     res.status(404).json({ error: 'Метод API не найден' });
   });
 
+  // Коды ошибок репозитория, которые означают проблему в запросе клиента.
+  // Их нужно отдавать как 4xx, а не как 500, иначе несуществующий автосервис
+  // или вид продвижения выглядит как падение сервера.
+  const CLIENT_ERROR_STATUS: Record<string, number> = {
+    CENTER_NOT_FOUND: 404,
+    SERVICE_NOT_FOUND: 404,
+    PROMOTION_TYPE_NOT_FOUND: 404,
+    NOT_FOUND: 404,
+    INVALID_TABLE: 400,
+    INVALID_STATUS: 400,
+    DUPLICATE: 409,
+    REGISTER_FAILED: 400
+  };
+
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error('STOBOOK API error:', error);
     if (res.headersSent) return;
     if ((error as { code?: string } | null)?.code === '22P02') {
       res.status(400).json({ error: 'Некорректный идентификатор' });
+      return;
+    }
+    const repoStatus = CLIENT_ERROR_STATUS[(error as { code?: string } | null)?.code ?? ''];
+    if (repoStatus) {
+      res.status(repoStatus).json({ error: error instanceof Error ? error.message : 'Ошибка запроса' });
       return;
     }
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });

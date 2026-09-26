@@ -1,11 +1,11 @@
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
 import type { Profile } from '../types/index.js';
+import { DEVELOPMENT_SESSION_SECRET } from '../config/env.js';
 
 export const SESSION_COOKIE_NAME = 'stobook_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 export const ADMIN_SESSION_TTL_SECONDS = 60 * 60 * 12;
-const developmentSecret = randomBytes(32).toString('hex');
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface SessionPayload {
@@ -32,7 +32,7 @@ function getSessionSecret(): string {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('SESSION_SECRET is required in production');
   }
-  return developmentSecret;
+  return DEVELOPMENT_SESSION_SECRET;
 }
 
 function encodePayload(payload: SessionPayload): string {
