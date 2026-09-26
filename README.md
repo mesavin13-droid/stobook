@@ -82,7 +82,7 @@ SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 
 # Telegram Bot & Mini App
 TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
-VITE_TELEGRAM_BOT_USERNAME="stobook_bot"
+VITE_TELEGRAM_BOT_USERNAME="stobookbot"
 
 # Web Push (VAPID)
 VAPID_PUBLIC_KEY="BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBKr3qBUYIHBQFLXYp5Nksh8U"
@@ -130,6 +130,8 @@ ADMIN_TELEGRAM_IDS=""
 
 ### Роли и онбординг
 Авторизация только через Telegram Mini App: `POST /api/telegram/verify` проверяет подпись `initData` и создаёт профиль клиента, если его ещё нет.
+
+- **Как открыть приложение**: Mini App привязывается к боту кнопкой меню (`setChatMenuButton` с `type=web_app` на `https://<ваш-домен>`) — только так Telegram передаёт подписанный `initData`. Прямая ссылка в обычном браузере подписи не даёт: экран входа покажет ссылку на бота вместо ошибки авторизации. Логин ждёт до 3 с готовности `telegram-web-app.js`, который подключается асинхронно.
 
 - **Владелец СТО**: пункт «Стать владельцем СТО» в профиле → форма регистрации → `POST /api/service-centers/register`. Заявка создаётся со статусом `PENDING` и уходит на модерацию, а профиль в той же транзакции повышается до `SERVICE_OWNER`, поэтому кабинет владельца доступен сразу.
 - **Администратор платформы**: Telegram id из `ADMIN_TELEGRAM_IDS`. Повышение и понижение происходят при входе, вручную роль выдавать не нужно. Действует в рамках RLS: триггер `prevent_profile_privilege_changes` запрещает менять роль кому-либо, кроме серверного контекста.

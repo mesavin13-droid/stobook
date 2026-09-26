@@ -68,6 +68,30 @@ export function getTelegramInitData(): string | null {
   return window.Telegram?.WebApp?.initData || null;
 }
 
+const INIT_DATA_READY_TIMEOUT_MS = 3000;
+const INIT_DATA_POLL_INTERVAL_MS = 100;
+
+/**
+ * telegram-web-app.js is loaded async, so the first paint can happen before the
+ * WebApp bridge exists. Waiting briefly avoids a login attempt that would
+ * inevitably fail with "Требуются данные Telegram".
+ */
+export async function waitForTelegramInitData(
+  timeoutMs: number = INIT_DATA_READY_TIMEOUT_MS
+): Promise<string | null> {
+  const immediate = getTelegramInitData();
+  if (immediate) return immediate;
+  if (typeof window === 'undefined') return null;
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, INIT_DATA_POLL_INTERVAL_MS));
+    const initData = getTelegramInitData();
+    if (initData) return initData;
+  }
+  return null;
+}
+
 export function getTelegramUser() {
   if (typeof window === 'undefined') return null;
   return window.Telegram?.WebApp?.initDataUnsafe?.user || null;

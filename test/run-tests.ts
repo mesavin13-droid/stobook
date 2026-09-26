@@ -1,6 +1,7 @@
 import { calculateAvailableSlots } from '../src/services/availability/index.js';
 import { store } from '../src/services/store/index.js';
 import { ADMIN_SESSION_TTL_SECONDS, createSessionToken, parseSessionToken } from '../src/lib/session.js';
+import { waitForTelegramInitData } from '../src/lib/telegram/webapp.js';
 
 let passed = 0;
 let failed = 0;
@@ -167,6 +168,31 @@ async function runTests() {
     'Admin session uses the shortened lifetime'
   );
   assert(parseSessionToken(adminToken, sessionNow + (ADMIN_SESSION_TTL_SECONDS + 60) * 1000) === null, 'Admin session expires early');
+
+  console.log('\n--- TEST 6: Telegram Bridge Readiness ---');
+  const globals = globalThis as { window?: unknown };
+  const originalWindow = globals.window;
+  try {
+    assert((await waitForTelegramInitData(0)) === null, 'No initData when the WebApp bridge is absent');
+
+    globals.window = { Telegram: { WebApp: { initData: '' } } };
+    assert((await waitForTelegramInitData(120)) === null, 'Empty initData does not resolve into a login attempt');
+
+    globals.window = { Telegram: { WebApp: { initData: 'auth_date=1&hash=signed' } } };
+    const readyInitData = await waitForTelegramInitData(0);
+    assert(readyInitData === 'auth_date=1&hash=signed', 'Signed initData is returned immediately');
+
+    const bridge = { Telegram: { WebApp: { initData: '' } } };
+    globals.window = bridge;
+    setTimeout(() => {
+      (bridge as { Telegram: { WebApp: { initData: string } } }).Telegram.WebApp.initData = 'auth_date=2&hash=late';
+    }, 150);
+    const lateInitData = await waitForTelegramInitData(2000);
+    assert(lateInitData === 'auth_date=2&hash=late', 'Late async script load is awaited');
+  } finally {
+    if (originalWindow === undefined) delete globals.window;
+    else globals.window = originalWindow;
+  }
 
   // Summary
   console.log(`\n========================================`);

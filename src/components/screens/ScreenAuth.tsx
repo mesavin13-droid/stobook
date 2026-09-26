@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { Button, Input } from '../design-system';
-import { ArrowLeft, Send, Phone, ShieldCheck } from 'lucide-react';
-import { getTelegramInitData } from '../../lib/telegram/webapp';
+import { ArrowLeft, Send, Phone, ShieldCheck, ExternalLink } from 'lucide-react';
+import { waitForTelegramInitData } from '../../lib/telegram/webapp';
 import type { Profile } from '../../types';
+
+const TELEGRAM_BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'stobookbot';
+const TELEGRAM_APP_URL = `https://t.me/${TELEGRAM_BOT_USERNAME}?startapp`;
 
 export interface ScreenAuthProps {
   onSuccess: (profile: Profile) => void;
@@ -14,6 +17,7 @@ export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack }) => 
   const [phoneNumber, setPhoneNumber] = useState('+7 (913) ');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [requiresTelegramApp, setRequiresTelegramApp] = useState(false);
 
   const handlePhoneSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,11 +28,17 @@ export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack }) => 
     setIsLoading(true);
     setErrorMessage(null);
     try {
+      const initData = await waitForTelegramInitData();
+      if (!initData) {
+        setRequiresTelegramApp(true);
+        return;
+      }
+      setRequiresTelegramApp(false);
       const response = await fetch('/api/telegram/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ initData: getTelegramInitData() || '' })
+        body: JSON.stringify({ initData })
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload.profile) {
@@ -40,6 +50,12 @@ export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack }) => 
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const switchToPhone = () => {
+    setErrorMessage(null);
+    setRequiresTelegramApp(false);
+    setAuthMode('phone');
   };
 
   return (
@@ -94,7 +110,7 @@ export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack }) => 
               variant="ghost"
               size="lg"
               fullWidth
-              onClick={() => setAuthMode('phone')}
+              onClick={switchToPhone}
               icon={<Phone className="w-4 h-4 text-[#70777D]" />}
               className="h-[54px] bg-white border border-[#E1E4E6]"
             >
@@ -124,12 +140,35 @@ export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack }) => 
 
             <button
               type="button"
-              onClick={() => setAuthMode('telegram')}
+              onClick={switchToPhone}
               className="w-full text-xs font-semibold text-[#70777D] hover:text-[#111315] py-2 text-center"
             >
               ← Вернуться к Telegram
             </button>
           </form>
+        )}
+        {requiresTelegramApp && (
+          <div
+            role="alert"
+            className="w-full max-w-sm mx-auto rounded-[18px] border border-[#E1E4E6] bg-white p-4 text-left space-y-3"
+          >
+            <p className="text-sm font-bold text-[#111315]">Откройте приложение через бота</p>
+            <p className="text-xs text-[#70777D] leading-relaxed">
+              Обычный браузер не передаёт Telegram данные для входа. Откройте бота
+              {' '}
+              <span className="font-semibold text-[#111315]">@{TELEGRAM_BOT_USERNAME}</span> и нажмите
+              кнопку «Открыть STOBOOK» в его меню.
+            </p>
+            <a
+              href={TELEGRAM_APP_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-2 rounded-[12px] bg-[#111315] text-[#B8F23A] py-3 text-sm font-bold transition-opacity hover:opacity-90"
+            >
+              Открыть @{TELEGRAM_BOT_USERNAME}
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
         )}
         {errorMessage && (
           <p role="alert" className="text-sm text-red-600 text-center">
