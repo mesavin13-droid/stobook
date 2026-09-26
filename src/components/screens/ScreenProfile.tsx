@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Button } from '../design-system';
-import { User, Car, Bell, Settings, ShieldCheck, ChevronRight, Plus, Wrench, CreditCard, Heart, HelpCircle, Info } from 'lucide-react';
+import { User, Car, Bell, Settings, ShieldCheck, ChevronRight, Plus, Wrench, CreditCard } from 'lucide-react';
 import { Profile, Vehicle } from '../../types';
+import type { LegalDocId } from '../../legal';
 
 export interface ScreenProfileProps {
   vehicle: Vehicle | null;
@@ -11,6 +12,8 @@ export interface ScreenProfileProps {
   onAuthenticate: () => void;
   onSwitchToOwnerCabinet: () => void;
   onSwitchToAdmin: () => void;
+  /** Открывает юридический документ. */
+  onOpenLegal: (doc: LegalDocId) => void;
 }
 
 export const ScreenProfile: React.FC<ScreenProfileProps> = ({
@@ -20,7 +23,8 @@ export const ScreenProfile: React.FC<ScreenProfileProps> = ({
   profile,
   onAuthenticate,
   onSwitchToOwnerCabinet,
-  onSwitchToAdmin
+  onSwitchToAdmin,
+  onOpenLegal
 }) => {
   const [notifyBookings, setNotifyBookings] = useState(true);
   const [notifyReminders, setNotifyReminders] = useState(true);
@@ -243,23 +247,23 @@ export const ScreenProfile: React.FC<ScreenProfileProps> = ({
         </span>
         <div className="bg-white rounded-[18px] border border-[#E1E4E6] p-2 shadow-xs space-y-0.5">
           {[
-            { icon: CreditCard, label: 'Способы оплаты' },
-            { icon: Heart, label: 'Избранные СТО' },
-            { icon: HelpCircle, label: 'Поддержка STOBOOK' },
-            { icon: Info, label: 'О приложении (версия 2.4.0)' }
-          ].map((item, idx) => {
+            { icon: ShieldCheck, label: 'Правовая информация', doc: 'agreement' as const },
+            { icon: ShieldCheck, label: 'Политика обработки персональных данных', doc: 'privacy' as const },
+            { icon: CreditCard, label: 'Условия оплаты и возврата', doc: 'payments' as const }
+          ].map((item) => {
             const Icon = item.icon;
             return (
-              <div
-                key={idx}
-                className="flex items-center justify-between p-3 rounded-[12px] hover:bg-[#F6F7F8] cursor-pointer transition-colors"
+              <button
+                key={item.doc}
+                onClick={() => onOpenLegal(item.doc)}
+                className="w-full flex items-center justify-between p-3 rounded-[12px] hover:bg-[#F6F7F8] transition-colors text-left"
               >
                 <div className="flex items-center gap-3">
                   <Icon className="w-4 h-4 text-[#70777D]" />
                   <span className="text-xs font-bold text-[#111315]">{item.label}</span>
                 </div>
                 <ChevronRight className="w-4 h-4 text-[#70777D]" />
-              </div>
+              </button>
             );
           })}
         </div>

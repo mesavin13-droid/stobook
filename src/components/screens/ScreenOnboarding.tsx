@@ -1,13 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '../design-system';
 import { ArrowRight, ShieldCheck, Zap, Sparkles } from 'lucide-react';
+import { LegalConsent } from '../legal/LegalConsent';
+import type { LegalDocId } from '../../legal';
 
 export interface ScreenOnboardingProps {
   onStart: () => void;
   onSkip?: () => void;
+  /** Открывает полный текст юридического документа. */
+  onOpenLegal: (doc: LegalDocId) => void;
 }
 
-export const ScreenOnboarding: React.FC<ScreenOnboardingProps> = ({ onStart }) => {
+export const ScreenOnboarding: React.FC<ScreenOnboardingProps> = ({ onStart, onOpenLegal }) => {
+  const [hasConsent, setHasConsent] = useState(false);
+
   return (
     <div className="relative min-h-full flex flex-col justify-between bg-[#111315] text-white p-6 sm:p-8 overflow-hidden select-none">
       {/* Background subtle light ambient reflection */}
@@ -75,15 +81,17 @@ export const ScreenOnboarding: React.FC<ScreenOnboardingProps> = ({ onStart }) =
           size="lg"
           fullWidth
           onClick={onStart}
-          className="h-[54px] text-base font-extrabold shadow-xl shadow-[#B8F23A]/15"
+          disabled={!hasConsent}
+          className="h-[54px] text-base font-extrabold shadow-xl shadow-[#B8F23A]/15 disabled:opacity-50 disabled:shadow-none"
           icon={<ArrowRight className="w-5 h-5" />}
           iconPosition="right"
         >
           Начать
         </Button>
-        <p className="text-[11px] text-center text-[#70777D]">
-          Продолжая, вы соглашаетесь с условиями сервиса
-        </p>
+
+        <div className="rounded-[14px] bg-white/5 border border-white/10 p-3">
+          <LegalConsent checked={hasConsent} onChange={setHasConsent} onOpenDocument={onOpenLegal} />
+        </div>
       </div>
     </div>
   );

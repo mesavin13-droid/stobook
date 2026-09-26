@@ -10,6 +10,10 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, '..', 'database', 'migrations');
 
+// Демо-данные не должны попадать в базу автоматически: файл применяется
+// вручную только для локальной разработки (см. шапку самого файла).
+const DEMO_DATASET = '900_demo_dataset.sql';
+
 async function main(): Promise<void> {
   const env = loadEnv();
   if (!env.databaseUrl) {
@@ -18,8 +22,12 @@ async function main(): Promise<void> {
 
   const files = fs
     .readdirSync(MIGRATIONS_DIR)
-    .filter((name) => name.endsWith('.sql'))
+    .filter((name) => name.endsWith('.sql') && name !== DEMO_DATASET)
     .sort();
+
+  if (fs.existsSync(path.join(MIGRATIONS_DIR, DEMO_DATASET))) {
+    console.log(`- ${DEMO_DATASET}: пропущен (демо-данные, применяется вручную)`);
+  }
 
   const pool = new Pool({ connectionString: env.databaseUrl, max: 1, statement_timeout: 120_000 });
   const client = await pool.connect();

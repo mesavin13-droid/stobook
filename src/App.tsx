@@ -6,6 +6,8 @@ import { Button } from './components/design-system';
 // Screens
 import { ScreenOnboarding } from './components/screens/ScreenOnboarding';
 import { ScreenAuth } from './components/screens/ScreenAuth';
+import { ScreenLegal } from './components/screens/ScreenLegal';
+import { DEFAULT_LEGAL_DOC, type LegalDocId } from './legal';
 import { ScreenAddCar } from './components/screens/ScreenAddCar';
 import { ScreenHome } from './components/screens/ScreenHome';
 import { ScreenProblemSearch } from './components/screens/ScreenProblemSearch';
@@ -45,6 +47,7 @@ export type ScreenId =
   | 'owner_schedule'
   | 'owner_manage'
   | 'owner_register'
+  | 'legal'
   | 'admin_dashboard';
 
 export default function App() {
@@ -63,6 +66,13 @@ export default function App() {
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [upcomingBookings, setUpcomingBookings] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  // Какой юридический документ открыт на экране «Правовая информация».
+  const [legalDoc, setLegalDoc] = useState<LegalDocId>(DEFAULT_LEGAL_DOC);
+
+  const openLegal = (doc: LegalDocId = DEFAULT_LEGAL_DOC) => {
+    setLegalDoc(doc);
+    setCurrentScreen('legal');
+  };
 
   const notify = (message: string) => {
     setToast(message);
@@ -256,6 +266,7 @@ export default function App() {
         return (
           <ScreenOnboarding
             onStart={() => setCurrentScreen('auth')}
+            onOpenLegal={openLegal}
           />
         );
 
@@ -272,6 +283,17 @@ export default function App() {
                 .catch(() => setCurrentScreen('add_car'));
             }}
             onBack={() => setCurrentScreen('onboarding')}
+            onOpenLegal={openLegal}
+          />
+        );
+
+      case 'legal':
+        return (
+          <ScreenLegal
+            initialDoc={legalDoc}
+            onBack={() => {
+              setCurrentScreen(profile ? 'profile' : 'auth');
+            }}
           />
         );
 
@@ -450,6 +472,7 @@ export default function App() {
             vehicle={activeVehicle}
             profile={profile}
             onAuthenticate={() => setCurrentScreen('auth')}
+            onOpenLegal={openLegal}
             onOpenCarProfile={() => {
               if (!requireAuthentication()) return;
               setCurrentScreen(activeVehicle ? 'car_profile' : 'add_car');

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Button, Input } from '../design-system';
 import { ArrowLeft, Send, Phone, ShieldCheck, ExternalLink } from 'lucide-react';
 import { waitForTelegramInitData } from '../../lib/telegram/webapp';
+import { LegalConsent } from '../legal/LegalConsent';
+import type { LegalDocId } from '../../legal';
 import type { Profile } from '../../types';
 
 const TELEGRAM_BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'stobookbot';
@@ -10,14 +12,19 @@ const TELEGRAM_APP_URL = `https://t.me/${TELEGRAM_BOT_USERNAME}?startapp`;
 export interface ScreenAuthProps {
   onSuccess: (profile: Profile) => void;
   onBack?: () => void;
+  /** Открывает полный текст юридического документа. */
+  onOpenLegal: (doc: LegalDocId) => void;
 }
 
-export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack }) => {
+export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack, onOpenLegal }) => {
   const [authMode, setAuthMode] = useState<'telegram' | 'phone'>('telegram');
   const [phoneNumber, setPhoneNumber] = useState('+7 (913) ');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [requiresTelegramApp, setRequiresTelegramApp] = useState(false);
+  // Согласие не предустановлено: по ст. 9 ФЗ-152 оно должно быть
+  // добровольным и однозначным.
+  const [hasConsent, setHasConsent] = useState(false);
 
   const handlePhoneSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,6 +32,10 @@ export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack }) => 
   };
 
   const handleTelegramAuth = async () => {
+    if (!hasConsent) {
+      setErrorMessage('Примите условия сервиса и дайте согласие на обработку персональных данных.');
+      return;
+    }
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -116,6 +127,8 @@ export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack }) => 
             >
               Продолжить по номеру
             </Button>
+
+            <LegalConsent checked={hasConsent} onChange={setHasConsent} onOpenDocument={onOpenLegal} />
           </>
         ) : (
           <form onSubmit={handlePhoneSubmit} className="space-y-4">
@@ -145,6 +158,8 @@ export const ScreenAuth: React.FC<ScreenAuthProps> = ({ onSuccess, onBack }) => 
             >
               ← Вернуться к Telegram
             </button>
+
+            <LegalConsent checked={hasConsent} onChange={setHasConsent} onOpenDocument={onOpenLegal} />
           </form>
         )}
         {requiresTelegramApp && (
