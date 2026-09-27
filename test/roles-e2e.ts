@@ -163,8 +163,8 @@ async function main() {
         name: CENTER_NAME,
         description: 'Автосервис полного цикла: диагностика, ТО, шиномонтаж и кузовной ремонт.',
         address: 'Новосибирск, улица Тестовая, д. 1',
-        latitude: 55.0084,
-        longitude: 82.9357,
+        latitude: 55.0612,
+        longitude: 82.9187,
         phone: '+7 999 000-11-22',
         telegram: '@e2e_owner',
         route_description: 'От метро пять минут пешком',
@@ -180,6 +180,14 @@ async function main() {
     );
     const center = register.json?.center;
     check('новое СТО попадает в статус PENDING', center?.status === 'PENDING', String(center?.status));
+    // Раньше форма регистрации жёстко слала координаты центра города, и любой
+    // адрес сохранялся с меткой в одной и той же точке. Проверяем, что сервер
+    // берёт именно те координаты, которые указал владелец.
+    check(
+      'координаты сохранились те, что выбрал владелец',
+      center?.latitude === 55.0612 && center?.longitude === 82.9187,
+      `${center?.latitude}, ${center?.longitude}`
+    );
     check(
       'профиль повышен до SERVICE_OWNER',
       register.json?.profile?.role === 'SERVICE_OWNER',

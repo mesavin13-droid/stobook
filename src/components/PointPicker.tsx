@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, Crosshair } from 'lucide-react';
-import { createFailingOverTileLayer } from '../../lib/maps/tiles';
+import { createFailingOverTileLayer } from '../lib/maps/tiles';
 
 export interface PointPickerProps {
   latitude: number;

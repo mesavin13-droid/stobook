@@ -13,6 +13,7 @@ import {
   type AuthContext
 } from './lib/session.js';
 import { isBookableServiceCenter } from './services/repository/rules.js';
+import { geocodeAddress, reverseGeocode } from './services/geocoding/index.js';
 import { DEFAULT_CITY_ID } from './services/repository/defaults.js';
 import type { OwnerScopedTable, Repository } from './services/repository/types.js';
 import { DEFAULT_CENTER_PHOTO } from './services/repository/defaults.js';
@@ -204,6 +205,38 @@ export function createApp({ repository, env }: AppDependencies): Express {
         monetization_enabled: settings.monetization_enabled,
         trial_days: settings.monetization_enabled ? settings.trial_days : null
       });
+    })
+  );
+
+  // Геокодирование адреса. Открытый маршрут: владелец подбирает точку ещё до
+  // регистрации, когда сессии ещё нет. Наружу отдаём только координаты и
+  // нормализованный адрес — никаких данных о пользователях здесь нет.
+  app.get(
+    '/api/geocode',
+    wrap(async (req, res) => {
+      const query = getQueryString(req.query.q) || '';
+      if (query.trim().length < 5) {
+        res.status(400).json({ error: 'Введите адрес подробнее: минимум 5 символов' });
+        return;
+      }
+      // Слишком длинный запрос внешнему сервису не нужен и только тратит лимит.
+      res.json({ results: await geocodeAddress(query.slice(0, 200)) });
+    })
+  );
+
+  // Обратное геокодирование: владелец поставил метку руками и хочет проверить,
+  // какой адрес ей соответствует.
+  app.get(
+    '/api/geocode/reverse',
+    wrap(async (req, res) => {
+      const latitude = Number(getQueryString(req.query.lat));
+      const longitude = Number(getQueryString(req.query.lng));
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        res.status(400).json({ error: 'Укажите корректные координаты' });
+        return;
+      }
+      const address = await reverseGeocode(latitude, longitude);
+      res.json({ address });
     })
   );
 

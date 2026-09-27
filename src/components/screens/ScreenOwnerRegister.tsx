@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Input } from '../design-system';
-import { ArrowLeft, CheckCircle2, Clock, MapPin, ShieldCheck, Wrench } from 'lucide-react';
+import { AddressPicker } from './AddressPicker';
+import { ArrowLeft, CheckCircle2, Clock, ShieldCheck, Wrench } from 'lucide-react';
 import { Profile } from '../../types';
 
 export interface ScreenOwnerRegisterProps {
@@ -21,6 +22,10 @@ const EMPTY_FORM = {
 
 export const ScreenOwnerRegister: React.FC<ScreenOwnerRegisterProps> = ({ onBack, onRegistered }) => {
   const [form, setForm] = useState(EMPTY_FORM);
+  // Координаты автосервиса. Раньше здесь стояли зашитые 55.0084/82.9357, и
+  // поэтому любой адрес сохранялся с меткой в центре Новосибирска. Теперь точку
+  // нужно выбрать: из подсказок геокодера или руками на карте.
+  const [point, setPoint] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isDone, setIsDone] = useState(false);
@@ -43,9 +48,18 @@ export const ScreenOwnerRegister: React.FC<ScreenOwnerRegisterProps> = ({ onBack
   }, []);
 
   const update = (patch: Partial<typeof EMPTY_FORM>) => setForm((current) => ({ ...current, ...patch }));
+  const hasPoint = point !== null;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    // Без метки автосервис попал бы на карту в случайную точку. Отправлять
+    // такое смысла нет: лучше явная просьба выбрать точку.
+    if (!point) {
+      setErrorMsg('Выберите адрес из подсказок или поставьте метку на карте');
+      return;
+    }
+    // Кладём в локальную переменную: после await сужение типа уже не работает.
+    const chosenPoint = point;
     setIsSubmitting(true);
     setErrorMsg(null);
 
@@ -62,8 +76,8 @@ export const ScreenOwnerRegister: React.FC<ScreenOwnerRegisterProps> = ({ onBack
           website: form.website,
           baysCount: Number(form.baysCount) || 1,
           mastersCount: Number(form.mastersCount) || 1,
-          latitude: 55.0084,
-          longitude: 82.9357
+          latitude: chosenPoint.latitude,
+          longitude: chosenPoint.longitude
         })
       });
 
@@ -144,13 +158,12 @@ export const ScreenOwnerRegister: React.FC<ScreenOwnerRegisterProps> = ({ onBack
           minLength={2}
         />
 
-        <Input
-          label="Адрес"
-          value={form.address}
-          onChange={(e) => update({ address: e.target.value })}
-          placeholder="ул. Ленина, 10"
-          required
-          minLength={5}
+        <AddressPicker
+          address={form.address}
+          latitude={point?.latitude ?? null}
+          longitude={point?.longitude ?? null}
+          onAddressChange={(address) => update({ address })}
+          onPointChange={(next) => setPoint(next)}
         />
 
         <Input
@@ -210,12 +223,7 @@ export const ScreenOwnerRegister: React.FC<ScreenOwnerRegisterProps> = ({ onBack
           />
         </div>
 
-        <div className="flex items-center gap-2 text-[11px] text-[#70777D]">
-          <MapPin className="w-4 h-4" />
-          Координаты определяются по городу, их можно уточнить после модерации
-        </div>
-
-        <Button type="submit" disabled={isSubmitting} className="w-full">
+        <Button type="submit" disabled={isSubmitting || !hasPoint} className="w-full">
           <Wrench className="w-4 h-4 mr-2" />
           {isSubmitting ? 'Отправляем...' : 'Отправить на модерацию'}
         </Button>

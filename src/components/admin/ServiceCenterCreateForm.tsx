@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Loader2, Check } from 'lucide-react';
-import { PointPicker } from './PointPicker';
+import { PointPicker } from '../PointPicker';
 import { triggerHaptic } from '../../lib/telegram/webapp';
 
 const EMPTY = {

@@ -128,6 +128,22 @@ export class LeafletMapProvider implements MapProvider {
       onClick(marker);
     });
 
+    // Точный адрес показываем при наведении и во всплывающем окне. Подпись
+    // метки намеренно короткая (название и рейтинг), а владельцу и клиенту
+    // нужно знать, в каком именно месте стоит автосервис.
+    const address = String(marker.address || '').trim();
+    if (address) {
+      lMarker.bindTooltip(escapeHtml(address), {
+        direction: 'top',
+        offset: [0, -34],
+        className: 'stobook-marker-tooltip'
+      });
+      lMarker.bindPopup(
+        `<div class="text-xs font-bold text-slate-900">${escapeHtml(marker.name)}</div>` +
+          `<div class="text-[11px] text-slate-600 mt-0.5">${escapeHtml(address)}</div>`
+      );
+    }
+
     this.markersMap.set(marker.id, lMarker);
   }
 

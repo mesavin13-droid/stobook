@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Input, EmptyState } from '../design-system';
 import { ArrowLeft, Plus, Trash2, Pencil, Check, X, Wrench, Users, CalendarClock, Warehouse, Store } from 'lucide-react';
 import { SERVICE_PRESETS, isPresetAlreadyAdded } from './serviceFilters';
+import { AddressPicker } from './AddressPicker';
 
 type Tab = 'services' | 'bays' | 'masters' | 'hours' | 'about';
 
@@ -65,6 +66,8 @@ interface OwnerCenter {
   route_description?: string;
   parking_description?: string;
   status: string;
+  latitude: number;
+  longitude: number;
 }
 
 interface OwnerPayload {
@@ -775,11 +778,24 @@ const AboutTab: React.FC<{ center: OwnerCenter; saving: boolean; onSave: (payloa
     route_description: center.route_description ?? '',
     parking_description: center.parking_description ?? ''
   });
+  // Точка на карте. Раньше автосервисы создавались с зашитыми координатами
+  // центра города, поэтому владельцу нужно дать возможность поставить метку
+  // самому — иначе исправить неверный адрес нечем.
+  const [point, setPoint] = useState<{ latitude: number; longitude: number }>({
+    latitude: center.latitude,
+    longitude: center.longitude
+  });
 
   return (
     <Card>
       <Input label="Название" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-      <Input label="Адрес" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+      <AddressPicker
+        address={form.address}
+        latitude={point.latitude}
+        longitude={point.longitude}
+        onAddressChange={(address) => setForm({ ...form, address })}
+        onPointChange={setPoint}
+      />
       <Input label="Телефон" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
       <Input
         label="Telegram"
@@ -820,7 +836,9 @@ const AboutTab: React.FC<{ center: OwnerCenter; saving: boolean; onSave: (payloa
             telegram: form.telegram.trim(),
             website: form.website.trim(),
             route_description: form.route_description.trim(),
-            parking_description: form.parking_description.trim()
+            parking_description: form.parking_description.trim(),
+            latitude: point.latitude,
+            longitude: point.longitude
           })
         }
       >
