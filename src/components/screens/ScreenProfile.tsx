@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '../design-system';
-import { User, Car, Bell, Settings, ShieldCheck, ChevronRight, Plus, Wrench, CreditCard } from 'lucide-react';
+import { User, Car, Bell, Settings, ShieldCheck, ChevronRight, Plus, Wrench } from 'lucide-react';
 import { Profile, Vehicle } from '../../types';
 import type { LegalDocId } from '../../legal';
 
@@ -248,8 +248,7 @@ export const ScreenProfile: React.FC<ScreenProfileProps> = ({
         <div className="bg-white rounded-[18px] border border-[#E1E4E6] p-2 shadow-xs space-y-0.5">
           {[
             { icon: ShieldCheck, label: 'Правовая информация', doc: 'agreement' as const },
-            { icon: ShieldCheck, label: 'Политика обработки персональных данных', doc: 'privacy' as const },
-            { icon: CreditCard, label: 'Условия оплаты и возврата', doc: 'payments' as const }
+            { icon: ShieldCheck, label: 'Политика обработки персональных данных', doc: 'privacy' as const }
           ].map((item) => {
             const Icon = item.icon;
             return (

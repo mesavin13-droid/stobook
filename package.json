@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx test/run-tests.ts",
     "test:http": "tsx test/rbac-http.ts",
+    "test:e2e": "tsx test/roles-e2e.ts",
     "test:postgres": "tsx test/postgres-repository.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:clear-demo": "tsx scripts/clear-demo-data.ts",

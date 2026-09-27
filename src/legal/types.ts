@@ -12,7 +12,7 @@ export interface LegalSection {
   nodes: LegalNode[];
 }
 
-export type LegalDocId = 'agreement' | 'privacy' | 'consent' | 'payments';
+export type LegalDocId = 'agreement' | 'privacy' | 'consent';
 
 export interface LegalDocument {
   id: LegalDocId;

@@ -1,14 +1,15 @@
 import { userAgreement } from './documents/agreement';
 import { personalDataConsent } from './documents/consent';
-import { paymentTerms } from './documents/payments';
 import { privacyPolicy } from './documents/privacy';
 import type { LegalDocId, LegalDocument } from './types';
 
+// Документ об оплате убран: онлайн-оплаты в платформе нет — запись идёт напрямую
+// в автосервис, расчёты между клиентом и СТО платформа не проводит. Вернём
+// документ вместе с платёжным провайдером.
 export const LEGAL_DOCUMENTS: LegalDocument[] = [
   userAgreement,
   privacyPolicy,
-  personalDataConsent,
-  paymentTerms
+  personalDataConsent
 ];
 
 const BY_ID = new Map<LegalDocId, LegalDocument>(LEGAL_DOCUMENTS.map((doc) => [doc.id, doc]));

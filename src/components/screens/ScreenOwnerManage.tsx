@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Input, EmptyState } from '../design-system';
 import { ArrowLeft, Plus, Trash2, Pencil, Check, X, Wrench, Users, CalendarClock, Warehouse, Store } from 'lucide-react';
+import { SERVICE_PRESETS, isPresetAlreadyAdded } from './serviceFilters';
 
 type Tab = 'services' | 'bays' | 'masters' | 'hours' | 'about';
 
@@ -304,12 +305,82 @@ const ServicesTab: React.FC<TabActions & { services: OwnerService[] }> = ({
   onDelete
 }) => {
   const [form, setForm] = useState({ customName: '', customCategory: '', price: '', durationMinutes: '60' });
+  // Категория в подсказках: показываем только нужные услуги, а не все сразу.
+  const [presetCategory, setPresetCategory] = useState(SERVICE_PRESETS[0].category);
   const empty = form.customName.trim().length === 0;
+
+  const activePreset = SERVICE_PRESETS.find((group) => group.category === presetCategory) ?? SERVICE_PRESETS[0];
+  // Названия уже добавленных услуг — чтобы не предлагать их повторно.
+  const existingNames = useMemo(() => services.map((service) => service.custom_name), [services]);
+
+  // Тап по готовой услуге заполняет форму: ничего печатать не нужно,
+  // но цену и длительность владелец успевает проверить перед добавлением.
+  const applyPreset = (name: string, price: number, duration: number) => {
+    setForm({
+      customName: name,
+      customCategory: activePreset.category,
+      price: String(price),
+      durationMinutes: String(duration)
+    });
+  };
 
   return (
     <>
+      {/* Быстрый путь стоит выше формы: владелец выбирает категорию и тапает
+          по услуге, а форма ниже заполняется сама. Раньше всё приходилось
+          вбивать руками, и большинство просто не добавляло услуги вовсе. */}
       <Card>
-        <h2 className="text-sm font-black text-[#111315]">Новая услуга</h2>
+        <h2 className="text-sm font-black text-[#111315]">Добавить из готовых</h2>
+        <p className="text-xs text-[#70777D] -mt-1">
+          Выберите категорию и нажмите на услугу — название, цена и длительность подставятся сами.
+        </p>
+
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          {SERVICE_PRESETS.map((group) => (
+            <button
+              key={group.category}
+              onClick={() => setPresetCategory(group.category)}
+              className={`flex items-center gap-1.5 shrink-0 px-3 py-2 rounded-[12px] text-xs font-bold whitespace-nowrap transition-colors ${
+                presetCategory === group.category
+                  ? 'bg-[#111315] text-[#B8F23A]'
+                  : 'bg-[#ECEFF1] text-[#70777D]'
+              }`}
+            >
+              <span>{group.icon}</span>
+              {group.category}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-1.5">
+          {activePreset.items.map((item) => {
+            const alreadyAdded = isPresetAlreadyAdded(item.name, existingNames);
+            return (
+              <button
+                key={item.name}
+                disabled={alreadyAdded}
+                onClick={() => applyPreset(item.name, item.price, item.duration)}
+                className={`w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-[12px] border text-left transition-colors ${
+                  alreadyAdded
+                    ? 'bg-[#F6F7F8] border-[#E1E4E6] text-[#A7ADB3] cursor-not-allowed'
+                    : 'bg-white border-[#E1E4E6] hover:border-[#111315]/40'
+                }`}
+              >
+                <span className="text-xs font-bold text-[#111315] truncate">
+                  {item.name}
+                  {alreadyAdded && <span className="ml-2 text-[10px]">уже добавлена</span>}
+                </span>
+                <span className="text-[11px] font-mono font-bold text-[#70777D] shrink-0">
+                  {item.price.toLocaleString('ru-RU')} ₽ · {item.duration} мин
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="text-sm font-black text-[#111315]">Своя услуга</h2>
         <Input
           label="Название"
           placeholder="Замена масла и фильтров"
@@ -537,12 +608,13 @@ const BaysTab: React.FC<TabActions & { bays: OwnerBay[] }> = ({
   );
 };
 
+// Кнопок «Уволить»/«Удалить» здесь намеренно нет: увольнение сотрудника —
+// кадровое действие, а не настройка. Мастер здесь — единица загрузки поста,
+// и удаление одного обнуляло бы расчёт свободных окон для всего автосервиса.
 const MastersTab: React.FC<TabActions & { masters: OwnerMaster[] }> = ({
   masters,
   saving,
-  onCreate,
-  onUpdate,
-  onDelete
+  onCreate
 }) => {
   const [form, setForm] = useState({ fullName: '', phone: '', specialization: '', start: '09:00', end: '20:00' });
 
@@ -593,7 +665,10 @@ const MastersTab: React.FC<TabActions & { masters: OwnerMaster[] }> = ({
       </Card>
 
       {masters.length === 0 ? (
-        <EmptyState title="Мастеров пока нет" description="Добавьте мастеров, чтобы они выполняли записи" />
+        <EmptyState
+          title="Мастеров пока нет"
+          description="Добавьте хотя бы одного мастера: без него автосервис не показывает свободные окна и запись невозможна"
+        />
       ) : (
         masters.map((master) => (
           <Card key={master.id}>
@@ -610,12 +685,6 @@ const MastersTab: React.FC<TabActions & { masters: OwnerMaster[] }> = ({
                   Смена {master.schedule_json.start}–{master.schedule_json.end}
                 </p>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => onUpdate(master.id, { isActive: !master.is_active })}>
-                {master.is_active ? 'Уволить' : 'Вернуть'}
-              </Button>
-              <IconToggle title="Удалить" danger onClick={() => onDelete(master.id)}>
-                <Trash2 className="w-4 h-4" />
-              </IconToggle>
             </Row>
           </Card>
         ))

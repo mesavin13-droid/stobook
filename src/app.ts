@@ -1151,6 +1151,47 @@ export function createApp({ repository, env }: AppDependencies): Express {
     })
   );
 
+  /**
+   * Полный список автосервисов для админки, включая PENDING.
+   *
+   * Публичный /api/service-centers отдаёт только bookable-центры (ACTIVE/TRIAL),
+   * поэтому заявки на модерацию в нём отсутствовали и очередь в админке всегда
+   * была пустой. Здесь отдаём все статусы — это единственный способ увидеть
+   * заявку до одобрения.
+   */
+  app.get(
+    '/api/admin/service-centers',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (_req, res) => {
+      const centers = await repository.listServiceCenters();
+      const activePromotions = await repository.listActivePromotions();
+      const promotedCenterIds = new Set(activePromotions.map((item) => item.service_center_id));
+
+      const results = await Promise.all(
+        centers.map(async (center) => {
+          const services = await repository.listServiceCenterServices(center.id, { activeOnly: false });
+          return {
+            ...center,
+            photos: center.photos?.length ? center.photos : [DEFAULT_CENTER_PHOTO],
+            services,
+            minPrice: services.length > 0 ? Math.min(...services.map((item) => item.price)) : null,
+            is_promoted: promotedCenterIds.has(center.id)
+          };
+        })
+      );
+
+      // PENDING первыми: это и есть рабочая очередь модерации.
+      results.sort((left, right) => {
+        if (left.status === 'PENDING' && right.status !== 'PENDING') return -1;
+        if (left.status !== 'PENDING' && right.status === 'PENDING') return 1;
+        return (left.name || '').localeCompare(right.name || '', 'ru');
+      });
+
+      res.json(results);
+    })
+  );
+
   // Создание автосервиса из админки. Нужно, чтобы платформа могла сама
   // наполнить каталог (например, при партнёрстве с сервисами), не дожидаясь
   // самостоятельной регистрации владельца. Статус по умолчанию ACTIVE:

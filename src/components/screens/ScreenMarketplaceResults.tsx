@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { FilterChip, RatingBadge, StatusBadge, Button } from '../design-system';
-import { ArrowLeft, MapPin, SlidersHorizontal, Map, List, Clock } from 'lucide-react';
+import { ArrowLeft, MapPin, SlidersHorizontal, Map, List, Clock, SearchX } from 'lucide-react';
 import { ServiceCenter } from '../../types';
 import { availabilityBadge, formatDistance, formatMinPrice, nextSlotLabel } from './centerMeta';
+import { searchCenters } from './serviceFilters';
 
 export interface ScreenMarketplaceResultsProps {
   taskTitle: string;
@@ -24,7 +25,14 @@ export const ScreenMarketplaceResults: React.FC<ScreenMarketplaceResultsProps> =
   const [activeFilter, setActiveFilter] = useState<string>('Все');
   const [sortBy, setSortBy] = useState<'distance' | 'price' | 'rating'>('distance');
 
-  const filtered = serviceCenters
+  // Запрос из поиска реально ограничивает выдачу. Раньше taskTitle был только
+  // подписью в шапке, поэтому любой запрос показывал один и тот же список.
+  const matches = useMemo(
+    () => searchCenters(serviceCenters, taskTitle),
+    [serviceCenters, taskTitle]
+  );
+
+  const filtered = matches
     .filter((sc) => {
       if (activeFilter === 'Сегодня' && sc.availabilityStatus !== 'today') return false;
       if (activeFilter === 'Открыто' && sc.availabilityStatus === 'closed') return false;
@@ -55,6 +63,9 @@ export const ScreenMarketplaceResults: React.FC<ScreenMarketplaceResultsProps> =
             <p className="text-xs font-semibold text-[#35B86B]">
               {taskTitle}
             </p>
+            <p className="text-[11px] text-[#70777D]">
+              Найдено: {matches.length}
+            </p>
           </div>
         </div>
 
@@ -82,7 +93,7 @@ export const ScreenMarketplaceResults: React.FC<ScreenMarketplaceResultsProps> =
           label="Все СТО"
           active={activeFilter === 'Все'}
           onClick={() => setActiveFilter('Все')}
-          count={serviceCenters.length}
+          count={matches.length}
         />
         <FilterChip
           label="Сегодня"
@@ -106,6 +117,28 @@ export const ScreenMarketplaceResults: React.FC<ScreenMarketplaceResultsProps> =
           onClick={() => setSortBy('price')}
         />
       </div>
+
+      {/* Запрос ничего не нашёл: показываем это явно и предлагаем снять поиск,
+          иначе пустой экран читается как ошибка. */}
+      {filtered.length === 0 && (
+        <div className="bg-white rounded-[18px] border border-dashed border-[#C9CFD4] p-6 flex flex-col items-center text-center gap-3">
+          <SearchX className="w-8 h-8 text-[#C9CFD4]" />
+          <div>
+            <p className="text-sm font-extrabold text-[#111315]">
+              Ничего не нашлось по запросу «{taskTitle}»
+            </p>
+            <p className="text-xs text-[#70777D] mt-1">
+              Попробуйте другое слово или посмотрите все автосервисы
+            </p>
+          </div>
+          <button
+            onClick={onBack}
+            className="px-4 py-2.5 rounded-[14px] bg-[#111315] text-[#B8F23A] text-xs font-extrabold"
+          >
+            Все автосервисы
+          </button>
+        </div>
+      )}
 
       {/* Clean Marketplace Cards List */}
       <div className="space-y-3 pt-1">

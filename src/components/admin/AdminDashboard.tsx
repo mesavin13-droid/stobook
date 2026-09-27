@@ -26,6 +26,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
   // Какой автосервис сейчас открыт в панели настройки услуг и расписания.
   const [configCenterId, setConfigCenterId] = useState<string | null>(null);
 
+  // Счётчик заявок на модерацию. Берём из списка, а не из метрик: метрики
+  // обновляются отдельно и могли разойтись с реальной очередью.
+  const pendingCount = serviceCenters.filter((center) => center.status === 'PENDING').length;
+
   const loadData = () => {
     fetch('/api/admin/metrics')
       .then((r) => r.json())
@@ -35,7 +39,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
       })
       .catch(console.error);
 
-    fetch('/api/service-centers')
+    // Именно /api/admin/service-centers, а не публичный /api/service-centers:
+    // публичный отдаёт только bookable-центры, и заявки на модерацию (PENDING)
+    // в нём не видны — очередь выглядела пустой.
+    fetch('/api/admin/service-centers')
       .then((r) => r.json())
       .then(setServiceCenters)
       .catch(console.error);
@@ -102,11 +109,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-200 gap-4 text-xs font-bold">
+      {/* Tabs. На мобильном шесть вкладок не помещаются в ширину экрана,
+          поэтому ряд прокручивается по горизонтали, иначе последние вкладки
+          уезжали за край и до них было не дотянуться. */}
+      <div className="flex border-b border-slate-200 gap-4 text-xs font-bold overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`py-3 border-b-2 transition-colors ${
+          className={`py-3 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'overview' ? 'border-amber-500 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -114,18 +123,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
         </button>
         <button
           onClick={() => setActiveTab('moderation')}
-          className={`py-3 border-b-2 transition-colors flex items-center gap-1.5 ${
+          className={`py-3 border-b-2 transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
             activeTab === 'moderation' ? 'border-amber-500 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
           Модерация СТО
-          {serviceCenters.some((s) => s.status === 'PENDING') && (
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-          )}
+          {pendingCount > 0 ? (
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black flex items-center justify-center">
+              {pendingCount}
+            </span>
+          ) : null}
         </button>
         <button
           onClick={() => setActiveTab('centers')}
-          className={`py-3 border-b-2 transition-colors ${
+          className={`py-3 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'centers' ? 'border-amber-500 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -134,7 +145,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
 
         <button
           onClick={() => setActiveTab('tariffs')}
-          className={`py-3 border-b-2 transition-colors ${
+          className={`py-3 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'tariffs'
               ? 'border-amber-500 text-slate-900'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -144,7 +155,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
         </button>
         <button
           onClick={() => setActiveTab('ads')}
-          className={`py-3 border-b-2 transition-colors ${
+          className={`py-3 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'ads' ? 'border-amber-500 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -152,7 +163,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
         </button>
         <button
           onClick={() => setActiveTab('settings')}
-          className={`py-3 border-b-2 transition-colors flex items-center gap-1.5 ${
+          className={`py-3 border-b-2 transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
             activeTab === 'settings' ? 'border-amber-500 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >

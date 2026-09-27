@@ -35,26 +35,19 @@ export const ScreenOnboarding: React.FC<ScreenOnboardingProps> = ({ onStart, onO
         </div>
       </div>
 
-      {/* Center Hero: 3D-styled Realistic Car Illustration */}
+      {/* Center Hero */}
       <div className="relative z-10 my-auto py-6 flex flex-col items-center text-center">
-        <div className="relative w-full max-w-sm aspect-16/10 flex items-center justify-center">
-          {/* Car Graphic with realistic lighting effect */}
-          <div className="relative w-full h-full rounded-[24px] overflow-hidden border border-white/10 shadow-2xl bg-gradient-to-b from-white/10 to-transparent flex items-center justify-center">
+        <div className="relative w-full max-w-sm aspect-16/9 flex items-center justify-center">
+          {/* Hero banner, локальный ассет public/images/stobook-hero.jpg.
+              Поверх картинки ничего не накладываем: ни градиента, ни бейджа —
+              в самом изображении уже есть брендинг и список услуг. */}
+          <div className="relative w-full h-full rounded-[24px] overflow-hidden border border-white/10 shadow-2xl">
             <img
-              src="https://images.unsplash.com/photo-1617814076367-b759c7d7e738?auto=format&fit=crop&w=800&q=80"
-              alt="Toyota Camry Dark"
-              className="w-full h-full object-cover opacity-90 contrast-110"
+              src="/images/stobook-hero.jpg"
+              alt="Автомобиль перед современным автосервисом"
+              className="w-full h-full object-cover"
+              decoding="async"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#111315] via-transparent to-transparent" />
-            
-            {/* Live slot indicator badge floating */}
-            <div className="absolute bottom-4 left-4 right-4 bg-[#111315]/80 backdrop-blur-md border border-white/15 rounded-[14px] p-2.5 flex items-center justify-between text-left">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#35B86B] animate-pulse" />
-                <span className="text-xs font-semibold text-white">Сегодня свободно</span>
-              </div>
-              <span className="text-xs font-mono font-bold text-[#B8F23A]">18 боксов в НСК</span>
-            </div>
           </div>
         </div>
 

@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { SearchBar, FilterChip, RatingBadge, StatusBadge, Button } from '../design-system';
 import { Bell, MapPin, ChevronRight, Wrench, Sparkles, SlidersHorizontal, ArrowRight, ShieldCheck } from 'lucide-react';
 import { Vehicle, ServiceCenter } from '../../types';
 import { availabilityBadge, formatDistance, formatMinPrice, nextSlotLabel } from './centerMeta';
+import { searchCenters } from './serviceFilters';
 
 export interface ScreenHomeProps {
   vehicle: Vehicle | null;
@@ -34,6 +35,27 @@ export const ScreenHome: React.FC<ScreenHomeProps> = ({
   onOpenNotifications,
   onOpenMap
 }) => {
+  // Раньше поле поиска было заглушкой: value="" и пустой onChange, поэтому
+  // ввод не сохранялся и подсказки не появлялись. Теперь запрос живой.
+  const [query, setQuery] = useState('');
+
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const suggestions = useMemo(() => {
+    if (normalizedQuery.length < 2) return [];
+    return searchCenters(serviceCenters, normalizedQuery).slice(0, 4);
+  }, [serviceCenters, normalizedQuery]);
+
+  // Подпись подсказки: сначала услуга, по которой нашлось совпадение.
+  const matchedService = (sc: ServiceCenter): string | null => {
+    const service = (sc.services ?? []).find((item) => {
+      if (!item.is_active) return false;
+      const haystack = `${item.custom_name} ${item.custom_category}`.toLowerCase();
+      return normalizedQuery.split(/\s+/).every((token) => haystack.includes(token));
+    });
+    return service ? `${service.custom_name} · от ${formatMinPrice(service.price)}` : null;
+  };
+
   return (
     <div className="min-h-full flex flex-col bg-[#F6F7F8] p-4 sm:p-6 space-y-5 pb-24">
       {/* Top Bar: Brand + Notifications */}
@@ -115,17 +137,53 @@ export const ScreenHome: React.FC<ScreenHomeProps> = ({
         <h2 className="text-base font-extrabold text-[#111315] tracking-tight">
           Что нужно сделать?
         </h2>
-        <div
-          onClick={() => onOpenSearch()}
-          className="cursor-pointer"
-        >
-          <SearchBar
-            value=""
-            onChange={() => {}}
-            placeholder="Опишите проблему или услугу..."
-            onMicClick={() => onOpenSearch('Скрип при торможении')}
-          />
-        </div>
+        <SearchBar
+          value={query}
+          onChange={setQuery}
+          placeholder="Опишите проблему или услугу..."
+          onClear={() => setQuery('')}
+          onMicClick={() => setQuery('Скрип при торможении')}
+        />
+
+        {/* Предложения по запросу: показываем, что поиск действительно ищет,
+            иначе поле выглядит декоративным. Клик сразу открывает автосервис. */}
+        {suggestions.length > 0 && (
+          <div className="bg-white rounded-[16px] border border-[#E1E4E6] overflow-hidden shadow-xs">
+            {suggestions.map((sc) => {
+              const match = matchedService(sc);
+              return (
+                <button
+                  key={sc.id}
+                  onClick={() => onSelectServiceCenter(sc)}
+                  className="w-full flex items-center gap-3 px-3.5 py-3 text-left hover:bg-[#F6F7F8] transition-colors border-b border-[#E1E4E6]/60 last:border-b-0"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-extrabold text-[#111315] truncate">{sc.name}</p>
+                    <p className="text-[11px] text-[#70777D] truncate">
+                      {match ?? sc.address}
+                    </p>
+                  </div>
+                  <RatingBadge rating={sc.rating} count={sc.reviews_count} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Ничего не нашлось — предлагаем посмотреть все автосервисы. */}
+        {query.trim().length > 0 && suggestions.length === 0 && (
+          <div className="bg-white rounded-[16px] border border-dashed border-[#C9CFD4] px-3.5 py-3 flex items-center justify-between gap-3">
+            <p className="text-[11px] text-[#70777D]">
+              Ничего не нашлось. Попробуйте «шиномонтаж» или «замена масла».
+            </p>
+            <button
+              onClick={() => onOpenSearch(query.trim())}
+              className="text-xs font-bold text-[#111315] underline underline-offset-2 shrink-0"
+            >
+              Все СТО
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Popular Services Horizontal Scroll */}
