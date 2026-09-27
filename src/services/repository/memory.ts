@@ -18,7 +18,8 @@ import type {
   TelegramAccount,
   UserRole,
   Vehicle,
-  VehicleHistorySettings
+  VehicleHistorySettings,
+  AdItem
 } from '../../types/index.js';
 import { store } from '../store/index.js';
 // RepositoryError — класс, поэтому нужен value-импорт, а не import type.
@@ -35,6 +36,8 @@ import type {
   BayPatch,
   BookingParams,
   BusinessHoursEntry,
+  AdInput,
+  AdPatch,
   CenterServicePatch,
   CompleteServiceParams,
   CreateBayInput,
@@ -662,6 +665,53 @@ export class MemoryRepository implements Repository {
     // status = 'ACTIVE'.
     if (!promotion || promotion.status !== 'ACTIVE') return false;
     promotion.status = 'REVOKED';
+    return true;
+  }
+
+  async listActiveAds(): Promise<AdItem[]> {
+    return store.ads
+      .filter((item) => item.is_active)
+      .sort((a, b) => a.sort_order - b.sort_order);
+  }
+
+  async listAds(): Promise<AdItem[]> {
+    return [...store.ads].sort((a, b) => a.sort_order - b.sort_order);
+  }
+
+  async createAd(input: AdInput): Promise<AdItem> {
+    const ad: AdItem = {
+      id: randomUUID(),
+      title: input.title,
+      text: input.text,
+      url: input.url || null,
+      kind: input.kind,
+      accent: input.accent || null,
+      is_active: true,
+      sort_order: input.sortOrder,
+      created_at: new Date().toISOString()
+    };
+    store.ads.push(ad);
+    return ad;
+  }
+
+  async updateAd(id: string, patch: AdPatch): Promise<AdItem | null> {
+    const ad = store.ads.find((item) => item.id === id);
+    if (!ad) return null;
+    if (patch.title !== undefined) ad.title = patch.title;
+    if (patch.text !== undefined) ad.text = patch.text;
+    // null значит «убрать ссылку», undefined — «не трогать».
+    if (patch.url !== undefined) ad.url = patch.url;
+    if (patch.accent !== undefined) ad.accent = patch.accent;
+    if (patch.kind !== undefined) ad.kind = patch.kind;
+    if (patch.isActive !== undefined) ad.is_active = patch.isActive;
+    if (patch.sortOrder !== undefined) ad.sort_order = patch.sortOrder;
+    return ad;
+  }
+
+  async deleteAd(id: string): Promise<boolean> {
+    const index = store.ads.findIndex((item) => item.id === id);
+    if (index < 0) return false;
+    store.ads.splice(index, 1);
     return true;
   }
 

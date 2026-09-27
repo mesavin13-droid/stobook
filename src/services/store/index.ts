@@ -1,4 +1,5 @@
 import {
+  AdItem,
   Appointment,
   AppointmentStatus,
   AppointmentStatusHistory,
@@ -80,6 +81,7 @@ class DataStore {
   public subscriptionPlans: SubscriptionPlan[] = [];
   public promotionTypes: PromotionType[] = [];
   public promotions: Promotion[] = [];
+  public ads: AdItem[] = [];
   public platformSettings: PlatformSettings = {
     trial_days: 14,
     booking_reminder_minutes: 60,

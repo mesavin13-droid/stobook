@@ -782,6 +782,84 @@ async function main() {
   });
   check('patching an unknown service returns 404', missingServicePatch.status === 404, `got ${missingServicePatch.status}`);
 
+  console.log('\n--- ADS ---');
+
+  const emptyAds = await api('/api/ads');
+  check('public ads endpoint works', emptyAds.status === 200 && Array.isArray(emptyAds.json?.ads), `got ${emptyAds.status}`);
+
+  const createdAd = await api('/api/admin/ads', {
+    method: 'POST',
+    token: adminToken,
+    body: { title: 'Скидка', text: 'Замена масла дешевле на 20%', kind: 'TICKER', accent: '#B8F23A', sortOrder: 0 }
+  });
+  const adId = createdAd.json?.ad?.id;
+  check('admin creates an ad', createdAd.status === 201 && Boolean(adId), `got ${createdAd.status} ${JSON.stringify(createdAd.json)?.slice(0, 120)}`);
+
+  const publicAfterCreate = await api('/api/ads');
+  check('new ad is visible to clients', (publicAfterCreate.json?.ads || []).some((a: any) => a.id === adId), `got ${(publicAfterCreate.json?.ads || []).length}`);
+
+  const createdBanner = await api('/api/admin/ads', {
+    method: 'POST',
+    token: adminToken,
+    body: { title: 'Партнёр', text: 'Шины со скидкой', kind: 'BANNER', url: 'https://example.com', sortOrder: 1 }
+  });
+  const bannerId = createdBanner.json?.ad?.id;
+  check('admin creates a banner with a link', createdBanner.status === 201 && Boolean(bannerId), `got ${createdBanner.status}`);
+
+  const disabled = await api(`/api/admin/ads/${adId}`, { method: 'PATCH', token: adminToken, body: { isActive: false } });
+  check('admin disables an ad', disabled.status === 200 && disabled.json?.ad?.is_active === false, `got ${disabled.status} ${JSON.stringify(disabled.json)?.slice(0, 100)}`);
+
+  const publicAfterDisable = await api('/api/ads');
+  check('disabled ad disappears from the public list', !(publicAfterDisable.json?.ads || []).some((a: any) => a.id === adId), `got ${(publicAfterDisable.json?.ads || []).length}`);
+
+  const adminList = await api('/api/admin/ads', { token: adminToken });
+  check('admin list still contains the disabled ad', (adminList.json?.ads || []).some((a: any) => a.id === adId), `got ${adminList.status}`);
+
+  const urlCleared = await api(`/api/admin/ads/${bannerId}`, { method: 'PATCH', token: adminToken, body: { url: null } });
+  check('admin clears an ad link', urlCleared.status === 200 && !urlCleared.json?.ad?.url, `got ${urlCleared.status} ${JSON.stringify(urlCleared.json?.ad?.url)}`);
+
+  const scriptUrl = await api('/api/admin/ads', {
+    method: 'POST',
+    token: adminToken,
+    body: { title: 'XSS', text: 'попытка', url: 'javascript:alert(1)' }
+  });
+  check('javascript: link rejected', scriptUrl.status === 400, `got ${scriptUrl.status}`);
+
+  const badAccent = await api('/api/admin/ads', {
+    method: 'POST',
+    token: adminToken,
+    body: { title: 'Цвет', text: 'проверка', accent: 'red; background:url(x)' }
+  });
+  check('non-hex accent rejected', badAccent.status === 400, `got ${badAccent.status}`);
+
+  const blankTitle = await api('/api/admin/ads', { method: 'POST', token: adminToken, body: { title: '   ', text: 'без заголовка' } });
+  check('blank title rejected', blankTitle.status === 400, `got ${blankTitle.status}`);
+
+  const customerAdAttempt = await api('/api/admin/ads', { method: 'POST', token: customerToken, body: { title: 'Своя реклама', text: 'нельзя' } });
+  check('customer cannot create ads', customerAdAttempt.status === 403, `got ${customerAdAttempt.status}`);
+
+  const anonAdAttempt = await api('/api/admin/ads');
+  check('anonymous cannot list ads', anonAdAttempt.status === 401, `got ${anonAdAttempt.status}`);
+
+  const unknownAdPatch = await api('/api/admin/ads/00000000-0000-0000-0000-000000000000', {
+    method: 'PATCH',
+    token: adminToken,
+    body: { isActive: false }
+  });
+  check('patching an unknown ad returns 404', unknownAdPatch.status === 404, `got ${unknownAdPatch.status}`);
+
+  const unknownAdDelete = await api('/api/admin/ads/00000000-0000-0000-0000-000000000000', { method: 'DELETE', token: adminToken });
+  check('deleting an unknown ad returns 404', unknownAdDelete.status === 404, `got ${unknownAdDelete.status}`);
+
+  const deletedAd = await api(`/api/admin/ads/${adId}`, { method: 'DELETE', token: adminToken });
+  check('admin deletes an ad', deletedAd.status === 200 && deletedAd.json?.success === true, `got ${deletedAd.status}`);
+
+  const deletedBanner = await api(`/api/admin/ads/${bannerId}`, { method: 'DELETE', token: adminToken });
+  check('admin deletes a banner', deletedBanner.status === 200, `got ${deletedBanner.status}`);
+
+  const publicAfterDelete = await api('/api/ads');
+  check('ads list is clean after cleanup', (publicAfterDelete.json?.ads || []).length === 0, `got ${(publicAfterDelete.json?.ads || []).length}`);
+
   console.log('\n--- TEARDOWN ---');
   await teardown();
 

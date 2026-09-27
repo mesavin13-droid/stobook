@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ServiceCenter, MapMarkerData } from '../../types';
 import { createMapProvider } from '../../lib/maps';
-import { FilterChip, RatingBadge, StatusBadge, Button } from '../design-system';
+import { RatingBadge, StatusBadge, Button } from '../design-system';
 import { formatDistance, formatMinPrice } from './centerMeta';
-import { Search, MapPin, ChevronRight, X, Phone, Clock, ArrowRight } from 'lucide-react';
+import { AdTicker, AdBanner, useAds } from '../ads/AdTicker';
+import { MapPin, ChevronRight, Phone, Clock, ArrowRight } from 'lucide-react';
 
 export interface ScreenMapProps {
   serviceCenters: ServiceCenter[];
@@ -20,10 +21,13 @@ export const ScreenMap: React.FC<ScreenMapProps> = ({
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapProviderRef = useRef<any>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<string>('Все');
   const [selectedCenter, setSelectedCenter] = useState<ServiceCenter | null>(serviceCenters[0] || null);
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
+
+  // Поиск и фильтры убраны с карты: их место заняла рекламная строка.
+  // Объявления подтягиваются независимо, чтобы карта рисовалась сразу.
+  const tickerAds = useAds('TICKER');
+  const bannerAds = useAds('BANNER');
 
   // Markers data transformation
   const markersData: MapMarkerData[] = serviceCenters.map((sc) => ({
@@ -43,16 +47,8 @@ export const ScreenMap: React.FC<ScreenMapProps> = ({
     photoUrl: sc.photos?.[0]
   }));
 
-  const filteredCenters = serviceCenters.filter((sc) => {
-    if (activeFilter === 'Сегодня' && sc.availabilityStatus !== 'today') return false;
-    if (activeFilter === 'Открыто' && sc.availabilityStatus === 'closed') return false;
-    if (activeFilter === 'До 3 км' && (sc.distance_km || 0) > 3) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return sc.name.toLowerCase().includes(q) || sc.address.toLowerCase().includes(q);
-    }
-    return true;
-  });
+  // Поиск и фильтры с карты убраны, поэтому показываем все центры подряд.
+  const visibleCenters = serviceCenters;
 
   // Setup Leaflet Map
   useEffect(() => {
@@ -71,13 +67,13 @@ export const ScreenMap: React.FC<ScreenMapProps> = ({
     };
   }, []);
 
-  // Sync markers with the current data and filters.
+  // Sync markers with the current data.
   // Depends on serviceCenters so markers appear once the fetch resolves.
   useEffect(() => {
     const provider = mapProviderRef.current;
     if (!provider) return;
     provider.clearMarkers();
-    filteredCenters.forEach((sc) => {
+    visibleCenters.forEach((sc) => {
       const markerItem = markersData.find((m) => m.id === sc.id);
       if (markerItem) {
         provider.addMarker(markerItem, () => {
@@ -85,61 +81,24 @@ export const ScreenMap: React.FC<ScreenMapProps> = ({
         });
       }
     });
-  }, [activeFilter, searchQuery, serviceCenters]);
+  }, [serviceCenters]);
 
   return (
     <div className="relative w-full h-[calc(100vh-68px)] min-h-[520px] flex flex-col overflow-hidden bg-[#ECEFF1]">
-      {/* Top Floating Search & Filters Bar */}
-      <div className="absolute top-3 left-3 right-3 z-20 space-y-2 pointer-events-auto">
-        <div className="relative flex items-center shadow-md rounded-[16px]">
-          <Search className="w-5 h-5 text-[#70777D] absolute left-3.5 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Куда поедем?"
-            className="w-full h-[48px] bg-white text-[#111315] font-semibold text-sm pl-11 pr-10 rounded-[16px] border border-[#E1E4E6] focus:outline-none focus:border-[#111315]"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 p-1 text-[#70777D]"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
+      {/* Рекламная строка заняла место панели поиска. Слой остаётся
+          абсолютным, как раньше поиск: это не меняет высоту карты, и Leaflet
+          не приходится пересчитывать размер после появления объявлений. */}
+      {tickerAds.length > 0 && (
+        <div className="absolute top-3 left-3 right-3 z-20 pointer-events-auto">
+          <AdTicker ads={tickerAds} />
         </div>
+      )}
 
-        {/* Filters Strip */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-          <FilterChip
-            label="Все"
-            active={activeFilter === 'Все'}
-            onClick={() => setActiveFilter('Все')}
-          />
-          <FilterChip
-            label="Открыто"
-            active={activeFilter === 'Открыто'}
-            onClick={() => setActiveFilter(activeFilter === 'Открыто' ? 'Все' : 'Открыто')}
-          />
-          <FilterChip
-            label="Сегодня"
-            active={activeFilter === 'Сегодня'}
-            onClick={() => setActiveFilter(activeFilter === 'Сегодня' ? 'Все' : 'Сегодня')}
-            icon="🟢"
-          />
-          <FilterChip
-            label="До 3 км"
-            active={activeFilter === 'До 3 км'}
-            onClick={() => setActiveFilter(activeFilter === 'До 3 км' ? 'Все' : 'До 3 км')}
-          />
-          <FilterChip
-            label="Цена"
-            active={activeFilter === 'Цена'}
-            onClick={() => setActiveFilter(activeFilter === 'Цена' ? 'Все' : 'Цена')}
-          />
+      {bannerAds.length > 0 && (
+        <div className="absolute top-[46px] left-3 right-3 z-20 pointer-events-auto">
+          <AdBanner ads={bannerAds} />
         </div>
-      </div>
+      )}
 
       {/* Fullscreen Map Canvas */}
       <div ref={mapContainerRef} className="w-full h-full flex-1 z-10" />

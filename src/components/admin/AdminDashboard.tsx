@@ -5,6 +5,7 @@ import { triggerHaptic } from '../../lib/telegram/webapp';
 import { PromotionManager } from './PromotionManager';
 import { ServiceCenterCreateForm } from './ServiceCenterCreateForm';
 import { ServiceCenterConfigPanel } from './ServiceCenterConfigPanel';
+import { AdsManager } from './AdsManager';
 
 interface AdminDashboardProps {
   onBackToCustomer: () => void;
@@ -21,7 +22,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
     monetization_enabled: false
   });
   const [settingsSaved, setSettingsSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'moderation' | 'centers' | 'settings' | 'tariffs'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'moderation' | 'centers' | 'settings' | 'tariffs' | 'ads'>('overview');
   // Какой автосервис сейчас открыт в панели настройки услуг и расписания.
   const [configCenterId, setConfigCenterId] = useState<string | null>(null);
 
@@ -140,6 +141,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
           }`}
         >
           Тарифы и Продвижение
+        </button>
+        <button
+          onClick={() => setActiveTab('ads')}
+          className={`py-3 border-b-2 transition-colors ${
+            activeTab === 'ads' ? 'border-amber-500 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          Реклама
         </button>
         <button
           onClick={() => setActiveTab('settings')}
@@ -353,6 +362,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
           onChanged={loadData}
         />
       )}
+
+      {activeTab === 'ads' && <AdsManager onChanged={loadData} />}
 
       {/* PLATFORM SETTINGS (Section 80 & 81) */}
       {activeTab === 'settings' && (

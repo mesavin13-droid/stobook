@@ -20,6 +20,8 @@ import {
   appointmentStatusUpdateSchema,
   availabilityQuerySchema,
   adminServiceCenterCreateSchema,
+  adCreateSchema,
+  adPatchSchema,
   bayCreateSchema,
   bayPatchSchema,
   bookingCreateSchema,
@@ -316,6 +318,16 @@ export function createApp({ repository, env }: AppDependencies): Express {
     clearSessionCookie(res, isProduction);
     res.json({ success: true });
   });
+
+  // Объявления платформы. Публичный маршрут отдаёт только активные и только
+  // в порядке показа: выключенное или неопубликованное клиент получить не может.
+  app.get(
+    '/api/ads',
+    wrap(async (_req, res) => {
+      const ads = await repository.listActiveAds();
+      res.json({ ads });
+    })
+  );
 
   app.get(
     '/api/service-centers',
@@ -1353,6 +1365,73 @@ export function createApp({ repository, env }: AppDependencies): Express {
   // Продвижение выдаёт администратор. Платёж не требуется: пока платформа
   // бесплатная, это инструмент модерации, а не продажа. Эндпоинты доступны
   // независимо от флага монетизации.
+  // Управление объявлениями. Отдельный CRUD, а не часть platform_settings:
+  // объявлений много, и каждое включается и выключается независимо.
+  app.get(
+    '/api/admin/ads',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (_req, res) => {
+      const ads = await repository.listAds();
+      res.json({ ads });
+    })
+  );
+
+  app.post(
+    '/api/admin/ads',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = adCreateSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных объявления' });
+        return;
+      }
+      const ad = await repository.createAd({
+        title: parse.data.title,
+        text: parse.data.text,
+        url: parse.data.url || undefined,
+        kind: parse.data.kind,
+        accent: parse.data.accent || undefined,
+        sortOrder: parse.data.sortOrder
+      });
+      res.status(201).json({ success: true, ad });
+    })
+  );
+
+  app.patch(
+    '/api/admin/ads/:id',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = adPatchSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных объявления' });
+        return;
+      }
+      const ad = await repository.updateAd(String(req.params.id || ''), parse.data);
+      if (!ad) {
+        res.status(404).json({ error: 'Объявление не найдено' });
+        return;
+      }
+      res.json({ success: true, ad });
+    })
+  );
+
+  app.delete(
+    '/api/admin/ads/:id',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const deleted = await repository.deleteAd(String(req.params.id || ''));
+      if (!deleted) {
+        res.status(404).json({ error: 'Объявление не найдено' });
+        return;
+      }
+      res.json({ success: true });
+    })
+  );
+
   app.get(
     '/api/admin/promotions',
     requireAuth,

@@ -275,6 +275,19 @@ export interface SubscriptionPlan {
   sort_order: number;
 }
 
+export interface AdItem {
+  id: string;
+  title: string;
+  text: string;
+  url?: string | null;
+  /** TICKER — бегущая строка, BANNER — карточка. */
+  kind: string;
+  accent?: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at?: string;
+}
+
 export interface PromotionType {
   id: string;
   code: string;

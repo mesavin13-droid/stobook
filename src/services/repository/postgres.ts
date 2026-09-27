@@ -1,6 +1,7 @@
 import { Pool, types, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 import { calculateAvailableSlots } from '../availability/index.js';
 import type {
+  AdItem,
   Appointment,
   AppointmentStatus,
   AvailableSlot,
@@ -37,6 +38,8 @@ import {
   type BayPatch,
   type BookingParams,
   type BusinessHoursEntry,
+  type AdInput,
+  type AdPatch,
   type CenterServicePatch,
   type CompleteServiceParams,
   type CreateBayInput,
@@ -334,6 +337,20 @@ function mapPromotionType(row: any): PromotionType {
     price: toNumber(row.price),
     duration_hours: toNumber(row.duration_hours),
     active: toBoolean(row.active)
+  };
+}
+
+function mapAd(row: any): AdItem {
+  return {
+    id: row.id,
+    title: row.title,
+    text: row.text,
+    url: row.url ?? null,
+    kind: row.kind,
+    accent: row.accent ?? null,
+    is_active: toBoolean(row.is_active),
+    sort_order: toNumber(row.sort_order),
+    created_at: row.created_at ? new Date(row.created_at).toISOString() : undefined
   };
 }
 
@@ -1666,6 +1683,64 @@ export class PostgresRepository implements Repository {
       `UPDATE promotions SET status = 'REVOKED' WHERE id = $1 AND status = 'ACTIVE'`,
       [promotionId]
     );
+    return (rowCount ?? 0) > 0;
+  }
+
+  async listActiveAds(): Promise<AdItem[]> {
+    const { rows } = await this.pool.query(
+      'SELECT * FROM ads WHERE is_active ORDER BY sort_order ASC, created_at DESC'
+    );
+    return rows.map(mapAd);
+  }
+
+  async listAds(): Promise<AdItem[]> {
+    const { rows } = await this.pool.query('SELECT * FROM ads ORDER BY sort_order ASC, created_at DESC');
+    return rows.map(mapAd);
+  }
+
+  async createAd(input: AdInput): Promise<AdItem> {
+    const { rows } = await this.pool.query(
+      `INSERT INTO ads (title, text, url, kind, accent, is_active, sort_order)
+       VALUES ($1, $2, $3, $4, $5, TRUE, $6)
+       RETURNING *`,
+      [input.title, input.text, input.url || null, input.kind, input.accent || null, input.sortOrder]
+    );
+    return mapAd(rows[0]);
+  }
+
+  async updateAd(id: string, patch: AdPatch): Promise<AdItem | null> {
+    // Собираем SET только из переданных полей: иначе нельзя отличить
+    // «не трогать» от «поставить null», а url нужно уметь убирать.
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    const push = (column: string, value: unknown) => {
+      values.push(value);
+      assignments.push(`${column} = $${values.length}`);
+    };
+
+    if (patch.title !== undefined) push('title', patch.title);
+    if (patch.text !== undefined) push('text', patch.text);
+    if (patch.url !== undefined) push('url', patch.url);
+    if (patch.accent !== undefined) push('accent', patch.accent);
+    if (patch.kind !== undefined) push('kind', patch.kind);
+    if (patch.isActive !== undefined) push('is_active', patch.isActive);
+    if (patch.sortOrder !== undefined) push('sort_order', patch.sortOrder);
+
+    if (assignments.length === 0) {
+      const { rows } = await this.pool.query('SELECT * FROM ads WHERE id = $1', [id]);
+      return rows.length > 0 ? mapAd(rows[0]) : null;
+    }
+
+    values.push(id);
+    const { rows } = await this.pool.query(
+      `UPDATE ads SET ${assignments.join(', ')} WHERE id = $${values.length} RETURNING *`,
+      values
+    );
+    return rows.length > 0 ? mapAd(rows[0]) : null;
+  }
+
+  async deleteAd(id: string): Promise<boolean> {
+    const { rowCount } = await this.pool.query('DELETE FROM ads WHERE id = $1', [id]);
     return (rowCount ?? 0) > 0;
   }
 

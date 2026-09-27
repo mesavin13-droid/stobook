@@ -1,4 +1,5 @@
 import type {
+  AdItem,
   Appointment,
   AppointmentStatus,
   AvailableSlot,
@@ -121,6 +122,25 @@ export interface GrantPromotionInput {
    * Админ выдаёт продвижение бесплатно, поэтому срок задаёт он.
    */
   durationHours?: number;
+}
+
+export interface AdInput {
+  title: string;
+  text: string;
+  url?: string;
+  kind: string;
+  accent?: string;
+  sortOrder: number;
+}
+
+export interface AdPatch {
+  title?: string;
+  text?: string;
+  url?: string | null;
+  kind?: string;
+  accent?: string | null;
+  isActive?: boolean;
+  sortOrder?: number;
 }
 
 export interface RegisterServiceCenterInput {
@@ -335,6 +355,17 @@ export interface Repository {
 
   /** Снять продвижение. Возвращает false, если записи не было. */
   revokePromotion(promotionId: string): Promise<boolean>;
+
+  /** Активные объявления в порядке показа. Это то, что видит клиент. */
+  listActiveAds(): Promise<AdItem[]>;
+
+  /** Все объявления, включая выключенные. Для админки. */
+  listAds(): Promise<AdItem[]>;
+
+  createAd(input: AdInput): Promise<AdItem>;
+  updateAd(id: string, patch: AdPatch): Promise<AdItem | null>;
+  /** Удаляет объявление. Возвращает false, если записи не было. */
+  deleteAd(id: string): Promise<boolean>;
 
   runReminderCron(): Promise<number>;
 }

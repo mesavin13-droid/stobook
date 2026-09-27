@@ -57,6 +57,30 @@
   scrollbar-width: none;
 }
 
+/* Бегущая строка объявлений. Лента состоит из двух одинаковых копий, поэтому
+   сдвиг ровно на -50% возвращает её в исходное положение без видимого шва.
+   Анимация на transform, а не на left/width: она не вызывает перерисовку и
+   идёт гладко на телефоне. */
+@keyframes ad-ticker-scroll {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.animate-ad-ticker {
+  animation: ad-ticker-scroll 28s linear infinite;
+}
+
+/* Не гоняем ленту, если пользователь просил меньше движения. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-ad-ticker {
+    animation: none;
+  }
+}
+
 /* Leaflet attribution: keep the required OSM credit readable but compact,
    so it fits in the gap above the floating search bar */
 .leaflet-control-attribution {

@@ -253,3 +253,50 @@ export const availabilityQuerySchema = z.object({
   serviceCenterServiceId: idSchema,
   dateStr: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Некорректная дата')
 });
+
+export const adKindSchema = z.enum(['TICKER', 'BANNER']);
+
+// Ссылка необязательна: бегущая строка часто просто информирует.
+// javascript: и data: запрещены, иначе через объявление можно было бы
+// выполнить скрипт у клиента.
+const adUrlSchema = z.union([
+  z
+    .string()
+    .trim()
+    .url('Некорректная ссылка')
+    .max(2048)
+    .refine((value) => /^https?:\/\//i.test(value), 'Ссылка должна начинаться с http:// или https://'),
+  z.literal('')
+]);
+
+// Акцент — hex-цвет для плашки. Проверяем формат, чтобы в разметку нельзя
+// было подставить произвольную строку.
+const adAccentSchema = z
+  .string()
+  .trim()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'Цвет должен быть в формате #RRGGBB')
+  .or(z.literal(''));
+
+export const adCreateSchema = z.object({
+  title: z.string().trim().min(1, 'Введите заголовок').max(120, 'Заголовок слишком длинный'),
+  text: z.string().trim().min(1, 'Введите текст объявления').max(500, 'Текст слишком длинный'),
+  url: adUrlSchema.optional(),
+  kind: adKindSchema.default('TICKER'),
+  accent: adAccentSchema.optional(),
+  sortOrder: z.coerce.number().int().min(0, 'Порядок не может быть отрицательным').max(9999).default(0)
+});
+
+export const adPatchSchema = z.object({
+  title: adCreateSchema.shape.title.optional(),
+  text: adCreateSchema.shape.text.optional(),
+  // null означает «убрать ссылку», undefined — «не трогать». Без null отвязать
+  // объявление от старого адреса было невозможно.
+  url: adUrlSchema.nullable().optional(),
+  kind: adKindSchema.optional(),
+  accent: adAccentSchema.nullable().optional(),
+  isActive: z.coerce.boolean().optional(),
+  sortOrder: adCreateSchema.shape.sortOrder.optional()
+});
+
+export type AdCreateInput = z.infer<typeof adCreateSchema>;
+export type AdPatchInput = z.infer<typeof adPatchSchema>;
