@@ -1178,6 +1178,130 @@ export function createApp({ repository, env }: AppDependencies): Express {
     })
   );
 
+  /**
+   * Администратор работает с чужим центром, поэтому ищем его по явному id,
+   * а не через resolveOwnedCenter (тот ищет центр по владельцу сессии).
+   */
+  async function resolveAdminCenter(req: Request, res: Response): Promise<ServiceCenter | null> {
+    const centerId = String((req.params as Record<string, string>).id || '');
+    const center = await repository.getServiceCenter(centerId);
+    if (!center) {
+      res.status(404).json({ error: 'Автосервис не найден' });
+      return null;
+    }
+    return center;
+  }
+
+  // Полная настройка услуг, постов, мастеров и расписания из админки.
+  // Владельцу приходится уходить в кабинет, чтобы заполнить то же самое;
+  // платформа может наполнить каталог сама.
+  app.get(
+    '/api/admin/service-centers/:id/config',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const center = await resolveAdminCenter(req, res);
+      if (!center) return;
+      const [services, bays, masters, businessHours] = await Promise.all([
+        repository.listServiceCenterServices(center.id),
+        repository.listBays(center.id),
+        repository.listMasters(center.id),
+        repository.listBusinessHours(center.id)
+      ]);
+      res.json({ center, services, bays, masters, businessHours });
+    })
+  );
+
+  app.post(
+    '/api/admin/service-centers/:id/services',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = ownerServiceCreateSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных услуги' });
+        return;
+      }
+      const center = await resolveAdminCenter(req, res);
+      if (!center) return;
+      const service = await repository.createCenterService(getRequestAuth(req).profile.id, {
+        serviceCenterId: center.id,
+        customName: parse.data.customName,
+        customCategory: parse.data.customCategory,
+        price: parse.data.price,
+        isFixedPrice: parse.data.isFixedPrice ?? false,
+        durationMinutes: parse.data.durationMinutes
+      });
+      res.status(201).json({ success: true, service });
+    })
+  );
+
+  app.patch(
+    '/api/admin/services/:id',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = ownerServicePatchSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных услуги' });
+        return;
+      }
+      const serviceId = String((req.params as Record<string, string>).id || '');
+      const centerId = await repository.getRowServiceCenterId('service_center_services', serviceId);
+      if (!centerId) {
+        res.status(404).json({ error: 'Услуга не найдена' });
+        return;
+      }
+      const service = await repository.updateCenterService(
+        getRequestAuth(req).profile.id,
+        serviceId,
+        parse.data
+      );
+      if (!service) {
+        res.status(404).json({ error: 'Услуга не найдена' });
+        return;
+      }
+      res.json({ success: true, service });
+    })
+  );
+
+  app.delete(
+    '/api/admin/services/:id',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const serviceId = String((req.params as Record<string, string>).id || '');
+      const centerId = await repository.getRowServiceCenterId('service_center_services', serviceId);
+      if (!centerId) {
+        res.status(404).json({ error: 'Услуга не найдена' });
+        return;
+      }
+      const deleted = await repository.deleteCenterService(getRequestAuth(req).profile.id, serviceId);
+      res.json({ success: deleted });
+    })
+  );
+
+  app.put(
+    '/api/admin/service-centers/:id/business-hours',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = businessHoursSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных расписания' });
+        return;
+      }
+      const center = await resolveAdminCenter(req, res);
+      if (!center) return;
+      const businessHours = await repository.replaceBusinessHours(
+        getRequestAuth(req).profile.id,
+        center.id,
+        parse.data.hours
+      );
+      res.json({ success: true, businessHours });
+    })
+  );
+
   app.patch(
     '/api/admin/service-centers/:id/status',
     requireAuth,

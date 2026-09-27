@@ -19,17 +19,49 @@ export class LeafletMapProvider implements MapProvider {
   private currentContainer: HTMLElement | null = null;
   private baseLayer: L.TileLayer | null = null;
   private tileErrorCount = 0;
-  private usingFallbackTiles = false;
+  private tileSourceIndex = 0;
 
-  // Free tile sources without an API key or watermark. OpenStreetMap is
-  // primary; OpenTopoMap (separate infrastructure) takes over if tiles fail.
-  private static readonly PRIMARY_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-  private static readonly FALLBACK_TILES = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
-  private static readonly PRIMARY_ATTRIBUTION =
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-  private static readonly FALLBACK_ATTRIBUTION =
-    '&copy; <a href="https://opentopomap.org">OpenTopoMap</a> ' +
-    '(<a href="https://www.openstreetmap.org/copyright">OSM</a>)';
+  /**
+   * Источники подложки. Без ключей API и без водяных знаков поверх карты.
+   *
+   * Positron — чистая светлая подложка: тонкие линии, спокойные цвета, метки
+   * не спорят с выделенными автосервисами. Раньше основным был стандартный
+   * слой OpenStreetMap, но он перегружен и на телефоне выглядит неопрязно.
+   *
+   * Дальше идут запасные варианты: Voyager, сам OpenStreetMap и спутник Esri.
+   * Переключение происходит автоматически, если провайдер не отдаёт тайлы.
+   */
+  private static readonly TILE_SOURCES: Array<{
+    url: string;
+    maxZoom: number;
+    attribution: string;
+    subdomains?: string;
+  }> = [
+    {
+      url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      maxZoom: 20,
+      subdomains: 'abcd',
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    },
+    {
+      url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      maxZoom: 20,
+      subdomains: 'abcd',
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    },
+    {
+      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    },
+    {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      maxZoom: 19,
+      attribution: 'Esri, Maxar, Earthstar Geographics'
+    }
+  ];
 
   private installBaseLayer(): void {
     if (!this.map) return;
@@ -41,21 +73,20 @@ export class LeafletMapProvider implements MapProvider {
       this.baseLayer = null;
     }
 
-    const isFallback = this.usingFallbackTiles;
-    const layer = L.tileLayer(
-      isFallback ? LeafletMapProvider.FALLBACK_TILES : LeafletMapProvider.PRIMARY_TILES,
-      {
-        maxZoom: isFallback ? 17 : 19,
-        attribution: isFallback
-          ? LeafletMapProvider.FALLBACK_ATTRIBUTION
-          : LeafletMapProvider.PRIMARY_ATTRIBUTION
-      }
-    );
+    const source = LeafletMapProvider.TILE_SOURCES[this.tileSourceIndex];
+    if (!source) return;
+
+    const layer = L.tileLayer(source.url, {
+      maxZoom: source.maxZoom,
+      attribution: source.attribution,
+      subdomains: source.subdomains ?? 'abc'
+    });
 
     layer.on('tileerror', () => {
       this.tileErrorCount += 1;
-      if (this.tileErrorCount >= 6 && !this.usingFallbackTiles && !this.isDestroyed) {
-        this.usingFallbackTiles = true;
+      const hasNext = this.tileSourceIndex < LeafletMapProvider.TILE_SOURCES.length - 1;
+      if (this.tileErrorCount >= 6 && hasNext && !this.isDestroyed) {
+        this.tileSourceIndex += 1;
         this.tileErrorCount = 0;
         this.installBaseLayer();
       }
@@ -80,7 +111,7 @@ export class LeafletMapProvider implements MapProvider {
     }
     this.baseLayer = null;
     this.tileErrorCount = 0;
-    this.usingFallbackTiles = false;
+    this.tileSourceIndex = 0;
 
     // Leaflet assigns an internal property `_leaflet_id` to container.
     // Reset it so Leaflet won't throw "Map container is already initialized"
@@ -201,7 +232,7 @@ export class LeafletMapProvider implements MapProvider {
     this.isDestroyed = true;
     this.baseLayer = null;
     this.tileErrorCount = 0;
-    this.usingFallbackTiles = false;
+    this.tileSourceIndex = 0;
     if (this.map) {
       try {
         this.map.remove();

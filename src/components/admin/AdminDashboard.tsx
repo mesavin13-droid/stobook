@@ -4,6 +4,7 @@ import { ShieldCheck, Check, X, Settings, Layers, TrendingUp, Users, Car, Calend
 import { triggerHaptic } from '../../lib/telegram/webapp';
 import { PromotionManager } from './PromotionManager';
 import { ServiceCenterCreateForm } from './ServiceCenterCreateForm';
+import { ServiceCenterConfigPanel } from './ServiceCenterConfigPanel';
 
 interface AdminDashboardProps {
   onBackToCustomer: () => void;
@@ -21,6 +22,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
   });
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'moderation' | 'centers' | 'settings' | 'tariffs'>('overview');
+  // Какой автосервис сейчас открыт в панели настройки услуг и расписания.
+  const [configCenterId, setConfigCenterId] = useState<string | null>(null);
 
   const loadData = () => {
     fetch('/api/admin/metrics')
@@ -307,16 +310,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
                         {center.address} · {center.status}
                       </p>
                     </div>
-                    {center.is_promoted && (
-                      <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900">
-                        промо
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {center.is_promoted && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900">
+                          промо
+                        </span>
+                      )}
+                      <button
+                        onClick={() => setConfigCenterId(configCenterId === center.id ? null : center.id)}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition-colors ${
+                          configCenterId === center.id
+                            ? 'bg-amber-500 text-slate-950'
+                            : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        {configCenterId === center.id ? 'Скрыть' : 'Настроить'}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
+
+          {configCenterId && (
+            <ServiceCenterConfigPanel
+              centerId={configCenterId}
+              centerName={serviceCenters.find((c) => c.id === configCenterId)?.name || 'Автосервис'}
+              onClose={() => setConfigCenterId(null)}
+              onChanged={loadData}
+            />
+          )}
         </div>
       )}
 
