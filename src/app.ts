@@ -76,6 +76,10 @@ export function createApp({ repository, env }: AppDependencies): Express {
   const app = express();
   const isProduction = env.isProduction;
 
+  // За обратным прокси (Vercel) req.protocol без этого отдаёт http, и сравнение
+  // Origin с APP_URL начинает расходиться на одну схему.
+  app.set('trust proxy', true);
+
   app.use(express.json({ limit: '100kb' }));
 
   app.use('/api', (req, res, next) => {
@@ -88,8 +92,17 @@ export function createApp({ repository, env }: AppDependencies): Express {
       next();
       return;
     }
-    const expectedOrigin = env.appOrigin ?? `${req.protocol}://${req.get('host')}`;
-    if (origin !== expectedOrigin) {
+    // Защита от CSRF. Origin сверяется с собственным адресом запроса: у
+    // запроса с чужого сайта Host указывает на наш домен, а Origin — на
+    // чужой, поэтому подделать его атакующий не может.
+    //
+    // Раньше здесь проверялся только APP_URL, из-за чего домен, выданный
+    // Vercel при деплое (stobook-dmitriy9.vercel.app), отдавал 403 на любую
+    // изменяющую запись: добавить машину или записаться было невозможно.
+    // Поэтому разрешаем и APP_URL, и собственный origin запроса.
+    const selfOrigin = `${req.protocol}://${req.get('host')}`;
+    const allowed = [env.appOrigin, selfOrigin].filter((value): value is string => Boolean(value));
+    if (!allowed.includes(origin)) {
       res.status(403).json({ error: 'Источник запроса не разрешён' });
       return;
     }

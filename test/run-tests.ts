@@ -182,7 +182,9 @@ async function runTests() {
       setHeader: (_key: string, header: string) => {
         captured = header;
       }
-    } as unknown as Response;
+      // Parameters<typeof setSessionCookie>[0] — тип ответа Express. Брать
+      // Response напрямую нельзя: здесь это DOM-тип из коробки.
+    } as unknown as Parameters<typeof setSessionCookie>[0];
     setSessionCookie(response, sessionToken, secure);
     return captured;
   };

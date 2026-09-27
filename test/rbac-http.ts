@@ -158,6 +158,15 @@ async function main() {
   const foreignOrigin = await api('/api/telegram/verify', { method: 'POST', body: { initData: '' }, origin: 'https://evil.example' });
   check('cross-origin mutating request blocked', foreignOrigin.status === 403, `got ${foreignOrigin.status}`);
 
+  // Vercel выдаёт проекту два адреса, и кнопка бота может вести на любой из
+  // них. Раньше домен, отличный от APP_URL, отдавал 403 на любую запись.
+  const ownOriginWrite = await api('/api/vehicles', { method: 'POST', body: {}, origin: BASE });
+  check(
+    'own origin passes the CSRF guard and reaches auth',
+    ownOriginWrite.status === 401,
+    `got ${ownOriginWrite.status} ${JSON.stringify(ownOriginWrite.json)?.slice(0, 80)}`
+  );
+
   console.log('\n--- CUSTOMER ---');
   const vehicles = await api('/api/vehicles', { token: customerToken });
   check('customer sees own vehicles', vehicles.status === 200 && Array.isArray(vehicles.json) && vehicles.json.length === 1, `got ${vehicles.status} ${JSON.stringify(vehicles.json)?.slice(0, 80)}`);
