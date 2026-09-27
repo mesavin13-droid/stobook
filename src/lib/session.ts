@@ -138,7 +138,12 @@ export function setSessionCookie(response: Response, token: string, secure: bool
     'Path=/',
     `Max-Age=${SESSION_TTL_SECONDS}`,
     'HttpOnly',
-    'SameSite=Lax'
+    // Telegram WebApp открывает приложение в iframe на web.telegram.org, то
+    // есть cookie оказывается сторонней. При SameSite=Lax браузер не отправляет
+    // её в таком контексте, и любой запрос API выглядит анонимным — отсюда
+    // «нужно авторизоваться» даже сразу после входа. None решает это, но
+    // требует Secure, поэтому по обычному http (localhost) остаётся Lax.
+    secure ? 'SameSite=None' : 'SameSite=Lax'
   ];
   if (secure) attributes.push('Secure');
   response.setHeader('Set-Cookie', attributes.join('; '));
@@ -150,7 +155,7 @@ export function clearSessionCookie(response: Response, secure: boolean): void {
     'Path=/',
     'Max-Age=0',
     'HttpOnly',
-    'SameSite=Lax'
+    secure ? 'SameSite=None' : 'SameSite=Lax'
   ];
   if (secure) attributes.push('Secure');
   response.setHeader('Set-Cookie', attributes.join('; '));

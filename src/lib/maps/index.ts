@@ -1,6 +1,7 @@
-import L from 'leaflet';
+﻿import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapBounds, MapMarkerData, MapProvider } from '../../types';
+import { createFailingOverTileLayer } from './tiles';
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -18,50 +19,6 @@ export class LeafletMapProvider implements MapProvider {
   private isDestroyed = false;
   private currentContainer: HTMLElement | null = null;
   private baseLayer: L.TileLayer | null = null;
-  private tileErrorCount = 0;
-  private tileSourceIndex = 0;
-
-  /**
-   * Источники подложки. Без ключей API и без водяных знаков поверх карты.
-   *
-   * Positron — чистая светлая подложка: тонкие линии, спокойные цвета, метки
-   * не спорят с выделенными автосервисами. Раньше основным был стандартный
-   * слой OpenStreetMap, но он перегружен и на телефоне выглядит неопрязно.
-   *
-   * Дальше идут запасные варианты: Voyager, сам OpenStreetMap и спутник Esri.
-   * Переключение происходит автоматически, если провайдер не отдаёт тайлы.
-   */
-  private static readonly TILE_SOURCES: Array<{
-    url: string;
-    maxZoom: number;
-    attribution: string;
-    subdomains?: string;
-  }> = [
-    {
-      url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-      maxZoom: 20,
-      subdomains: 'abcd',
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-    },
-    {
-      url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-      maxZoom: 20,
-      subdomains: 'abcd',
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-    },
-    {
-      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-    },
-    {
-      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      maxZoom: 19,
-      attribution: 'Esri, Maxar, Earthstar Geographics'
-    }
-  ];
 
   private installBaseLayer(): void {
     if (!this.map) return;
@@ -73,25 +30,7 @@ export class LeafletMapProvider implements MapProvider {
       this.baseLayer = null;
     }
 
-    const source = LeafletMapProvider.TILE_SOURCES[this.tileSourceIndex];
-    if (!source) return;
-
-    const layer = L.tileLayer(source.url, {
-      maxZoom: source.maxZoom,
-      attribution: source.attribution,
-      subdomains: source.subdomains ?? 'abc'
-    });
-
-    layer.on('tileerror', () => {
-      this.tileErrorCount += 1;
-      const hasNext = this.tileSourceIndex < LeafletMapProvider.TILE_SOURCES.length - 1;
-      if (this.tileErrorCount >= 6 && hasNext && !this.isDestroyed) {
-        this.tileSourceIndex += 1;
-        this.tileErrorCount = 0;
-        this.installBaseLayer();
-      }
-    });
-
+    const layer = createFailingOverTileLayer(() => this.installBaseLayer());
     layer.addTo(this.map);
     this.baseLayer = layer;
   }
@@ -110,8 +49,6 @@ export class LeafletMapProvider implements MapProvider {
       this.map = null;
     }
     this.baseLayer = null;
-    this.tileErrorCount = 0;
-    this.tileSourceIndex = 0;
 
     // Leaflet assigns an internal property `_leaflet_id` to container.
     // Reset it so Leaflet won't throw "Map container is already initialized"
@@ -231,8 +168,6 @@ export class LeafletMapProvider implements MapProvider {
   destroy(): void {
     this.isDestroyed = true;
     this.baseLayer = null;
-    this.tileErrorCount = 0;
-    this.tileSourceIndex = 0;
     if (this.map) {
       try {
         this.map.remove();

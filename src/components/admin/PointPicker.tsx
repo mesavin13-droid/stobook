@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, Crosshair } from 'lucide-react';
+import { createFailingOverTileLayer } from '../../lib/maps/tiles';
 
 export interface PointPickerProps {
   latitude: number;
@@ -24,6 +25,7 @@ export const PointPicker: React.FC<PointPickerProps> = ({ latitude, longitude, o
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
@@ -35,10 +37,15 @@ export const PointPicker: React.FC<PointPickerProps> = ({ latitude, longitude, o
       [latitude || DEFAULT_CENTER[0], longitude || DEFAULT_CENTER[1]],
       14
     );
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-    }).addTo(map);
+    // Тот же набор подложек, что и на клиентской карте: стандартные тайлы
+    // OpenStreetMap отвечают «Access blocked», использовать их нельзя.
+    const installTiles = () => {
+      if (tileLayerRef.current) {
+        map.removeLayer(tileLayerRef.current);
+      }
+      tileLayerRef.current = createFailingOverTileLayer(installTiles).addTo(map);
+    };
+    installTiles();
 
     map.on('click', (event: L.LeafletMouseEvent) => {
       onChangeRef.current({ latitude: event.latlng.lat, longitude: event.latlng.lng });

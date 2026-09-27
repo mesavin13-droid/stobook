@@ -3,7 +3,7 @@ import { store } from '../src/services/store/index.js';
 import { isBookableServiceCenter } from '../src/services/repository/rules.js';
 import { MemoryRepository } from '../src/services/repository/memory.js';
 import { DEVELOPMENT_SESSION_SECRET } from '../src/config/env.js';
-import { ADMIN_SESSION_TTL_SECONDS, createSessionToken, parseSessionToken } from '../src/lib/session.js';
+import { ADMIN_SESSION_TTL_SECONDS, createSessionToken, parseSessionToken, setSessionCookie } from '../src/lib/session.js';
 import { waitForTelegramInitData } from '../src/lib/telegram/webapp.js';
 
 let passed = 0;
@@ -171,6 +171,32 @@ async function runTests() {
     'Admin session uses the shortened lifetime'
   );
   assert(parseSessionToken(adminToken, sessionNow + (ADMIN_SESSION_TTL_SECONDS + 60) * 1000) === null, 'Admin session expires early');
+
+  console.log('\n--- TEST 5b: Session Cookie Attributes ---');
+  // Telegram WebApp открывает приложение в iframe на web.telegram.org, поэтому
+  // cookie оказывается сторонней. При SameSite=Lax браузер её не отправляет и
+  // каждый запрос API выглядит анонимным («нужно авторизоваться»).
+  const captureCookie = (secure: boolean): string => {
+    let captured = '';
+    const response = {
+      setHeader: (_key: string, header: string) => {
+        captured = header;
+      }
+    } as unknown as Response;
+    setSessionCookie(response, sessionToken, secure);
+    return captured;
+  };
+
+  const productionCookie = captureCookie(true);
+  assert(productionCookie.includes('SameSite=None'), 'Production session cookie is SameSite=None for the Telegram iframe');
+  assert(productionCookie.includes('Secure'), 'Production session cookie is Secure');
+  assert(productionCookie.includes('HttpOnly'), 'Session cookie stays HttpOnly');
+
+  const plainHttpCookie = captureCookie(false);
+  assert(
+    plainHttpCookie.includes('SameSite=Lax') && !plainHttpCookie.includes('SameSite=None'),
+    'Plain http keeps SameSite=Lax (None is rejected by browsers without Secure)'
+  );
 
   console.log('\n--- TEST 6: Telegram Bridge Readiness ---');
   const globals = globalThis as { window?: unknown };
