@@ -13,11 +13,13 @@ import {
   type AuthContext
 } from './lib/session.js';
 import { isBookableServiceCenter } from './services/repository/rules.js';
+import { DEFAULT_CITY_ID } from './services/repository/defaults.js';
 import type { OwnerScopedTable, Repository } from './services/repository/types.js';
 import { DEFAULT_CENTER_PHOTO } from './services/repository/defaults.js';
 import {
   appointmentStatusUpdateSchema,
   availabilityQuerySchema,
+  adminServiceCenterCreateSchema,
   bayCreateSchema,
   bayPatchSchema,
   bookingCreateSchema,
@@ -1121,6 +1123,58 @@ export function createApp({ repository, env }: AppDependencies): Express {
         subscriptionPlans,
         promotionTypes
       });
+    })
+  );
+
+  // Создание автосервиса из админки. Нужно, чтобы платформа могла сама
+  // наполнить каталог (например, при партнёрстве с сервисами), не дожидаясь
+  // самостоятельной регистрации владельца. Статус по умолчанию ACTIVE:
+  // модерация уже отработала в момент добавления.
+  app.post(
+    '/api/admin/service-centers',
+    requireAuth,
+    requireRole('SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = adminServiceCenterCreateSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных автосервиса' });
+        return;
+      }
+
+      const settings = await repository.getPlatformSettings();
+      const now = new Date();
+      // Как и при самостоятельной регистрации: пока монетизация выключена,
+      // доступ не ограничен по сроку.
+      const trialEndsAt = settings.monetization_enabled
+        ? new Date(now.getTime() + (settings.trial_days || 14) * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+
+      const center = await repository.registerServiceCenter({
+        // Владельцем назначаем администратора: центр должен быть виден
+        // в его кабинете, чтобы его можно было донастроить.
+        ownerId: getRequestAuth(req).profile.id,
+        cityId: parse.data.cityId || DEFAULT_CITY_ID,
+        name: parse.data.name,
+        description: parse.data.description,
+        address: parse.data.address,
+        latitude: parse.data.latitude,
+        longitude: parse.data.longitude,
+        phone: parse.data.phone,
+        telegram: parse.data.telegram,
+        website: parse.data.website,
+        route_description: parse.data.route_description,
+        parking_description: parse.data.parking_description,
+        rating: 5.0,
+        reviews_count: 0,
+        status: parse.data.status || 'ACTIVE',
+        trialStartedAt: now.toISOString(),
+        trialEndsAt,
+        photos: [],
+        baysCount: parse.data.baysCount,
+        mastersCount: parse.data.mastersCount
+      });
+
+      res.status(201).json({ success: true, serviceCenter: center });
     })
   );
 

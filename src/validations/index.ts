@@ -235,6 +235,19 @@ export const serviceCenterStatusUpdateSchema = z.object({
   status: serviceCenterStatusSchema
 });
 
+/**
+ * Создание автосервиса из админки. Отличается от самостоятельной регистрации
+ * тем, что координаты ставит модератор кликом по карте, а статус сразу
+ * ACTIVE — заявка от владельца прошла модерацию, а этот центр добавляет
+ * сама платформа.
+ */
+export const adminServiceCenterCreateSchema = serviceCenterRegisterSchema.extend({
+  cityId: idSchema.optional(),
+  status: serviceCenterStatusSchema.optional()
+});
+
+export type AdminServiceCenterCreateInput = z.infer<typeof adminServiceCenterCreateSchema>;
+
 export const availabilityQuerySchema = z.object({
   serviceCenterId: idSchema,
   serviceCenterServiceId: idSchema,

@@ -3,6 +3,7 @@ import { ServiceCenter, PlatformSettings, SubscriptionPlan, PromotionType } from
 import { ShieldCheck, Check, X, Settings, Layers, TrendingUp, Users, Car, Calendar, Sliders } from 'lucide-react';
 import { triggerHaptic } from '../../lib/telegram/webapp';
 import { PromotionManager } from './PromotionManager';
+import { ServiceCenterCreateForm } from './ServiceCenterCreateForm';
 
 interface AdminDashboardProps {
   onBackToCustomer: () => void;
@@ -19,7 +20,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
     monetization_enabled: false
   });
   const [settingsSaved, setSettingsSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'moderation' | 'settings' | 'tariffs'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'moderation' | 'centers' | 'settings' | 'tariffs'>('overview');
 
   const loadData = () => {
     fetch('/api/admin/metrics')
@@ -118,6 +119,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
           )}
         </button>
+        <button
+          onClick={() => setActiveTab('centers')}
+          className={`py-3 border-b-2 transition-colors ${
+            activeTab === 'centers' ? 'border-amber-500 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          Автосервисы
+        </button>
+
         <button
           onClick={() => setActiveTab('tariffs')}
           className={`py-3 border-b-2 transition-colors ${
@@ -274,6 +284,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToCustomer
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'centers' && (
+        <div className="space-y-6">
+          <ServiceCenterCreateForm onCreated={loadData} />
+
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+            <h3 className="font-extrabold text-sm text-slate-900 mb-3">Автосервисы на карте ({serviceCenters.length})</h3>
+            {serviceCenters.length === 0 ? (
+              <p className="text-xs text-slate-500">
+                Пока пусто. Добавьте первый автосервис формой выше — он сразу появится на карте.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {serviceCenters.map((center) => (
+                  <div key={center.id} className="flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <div className="min-w-0">
+                      <p className="font-bold text-xs text-slate-900 truncate">{center.name}</p>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {center.address} · {center.status}
+                      </p>
+                    </div>
+                    {center.is_promoted && (
+                      <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900">
+                        промо
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
