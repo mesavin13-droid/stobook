@@ -679,6 +679,100 @@ async function main() {
     }
   }
 
+  console.log('\n--- ADMIN CENTER CONFIG ---');
+
+  const configBefore = await api(`/api/admin/service-centers/${CENTER}/config`, { token: adminToken });
+  check(
+    'admin reads center config for a center it does not own',
+    configBefore.status === 200 && configBefore.json?.center?.id === CENTER,
+    `got ${configBefore.status} ${JSON.stringify(configBefore.json)?.slice(0, 100)}`
+  );
+
+  const servicesBefore = Array.isArray(configBefore.json?.services) ? configBefore.json.services.length : 0;
+
+  const adminService = await api(`/api/admin/service-centers/${CENTER}/services`, {
+    method: 'POST',
+    token: adminToken,
+    body: { customName: 'Диагностика подвески', customCategory: 'ТО', price: 1900, isFixedPrice: true, durationMinutes: 45 }
+  });
+  const adminServiceId = adminService.json?.service?.id;
+  check('admin adds a service to any center', adminService.status === 201 && Boolean(adminServiceId), `got ${adminService.status} ${JSON.stringify(adminService.json)?.slice(0, 120)}`);
+
+  const configAfterService = await api(`/api/admin/service-centers/${CENTER}/config`, { token: adminToken });
+  check(
+    'added service shows up in the center catalog',
+    Array.isArray(configAfterService.json?.services) && configAfterService.json.services.length === servicesBefore + 1,
+    `got ${configAfterService.status} ${configAfterService.json?.services?.length}`
+  );
+
+  const patchedService = await api(`/api/admin/services/${adminServiceId}`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { price: 2400, durationMinutes: 60 }
+  });
+  check('admin edits a service', patchedService.status === 200 && patchedService.json?.service?.price === 2400, `got ${patchedService.status} ${JSON.stringify(patchedService.json)?.slice(0, 120)}`);
+
+  const adminHours = await api(`/api/admin/service-centers/${CENTER}/business-hours`, {
+    method: 'PUT',
+    token: adminToken,
+    body: {
+      hours: [
+        { dayOfWeek: 0, openTime: '10:00', closeTime: '16:00', isClosed: true },
+        { dayOfWeek: 1, openTime: '08:30', closeTime: '20:00', isClosed: false },
+        { dayOfWeek: 2, openTime: '08:30', closeTime: '20:00', isClosed: false },
+        { dayOfWeek: 3, openTime: '08:30', closeTime: '20:00', isClosed: false },
+        { dayOfWeek: 4, openTime: '08:30', closeTime: '20:00', isClosed: false },
+        { dayOfWeek: 5, openTime: '08:30', closeTime: '20:00', isClosed: false },
+        { dayOfWeek: 6, openTime: '09:00', closeTime: '18:00', isClosed: false }
+      ]
+    }
+  });
+  check('admin sets business hours', adminHours.status === 200 && Array.isArray(adminHours.json?.businessHours), `got ${adminHours.status} ${JSON.stringify(adminHours.json)?.slice(0, 120)}`);
+
+  const configAfterHours = await api(`/api/admin/service-centers/${CENTER}/config`, { token: adminToken });
+  const monday = (configAfterHours.json?.businessHours || []).find((h: any) => h.day_of_week === 1);
+  check('business hours are read back exactly', monday?.open_time === '08:30' && monday?.close_time === '20:00' && monday?.is_closed === false, `got ${JSON.stringify(monday)}`);
+
+  const customerConfigAttempt = await api(`/api/admin/service-centers/${CENTER}/config`, { token: customerToken });
+  check('customer blocked from admin center config', customerConfigAttempt.status === 403, `got ${customerConfigAttempt.status}`);
+
+  const customerServiceAttempt = await api(`/api/admin/service-centers/${CENTER}/services`, {
+    method: 'POST',
+    token: customerToken,
+    body: { customName: 'Взлом', customCategory: 'ТО', price: 1, durationMinutes: 15 }
+  });
+  check('customer cannot add services through admin route', customerServiceAttempt.status === 403, `got ${customerServiceAttempt.status}`);
+
+  const anonConfigAttempt = await api(`/api/admin/service-centers/${CENTER}/config`);
+  check('anonymous blocked from admin center config', anonConfigAttempt.status === 401, `got ${anonConfigAttempt.status}`);
+
+  const missingConfig = await api('/api/admin/service-centers/00000000-0000-0000-0000-000000000000/config', { token: adminToken });
+  check('unknown center config returns 404', missingConfig.status === 404, `got ${missingConfig.status}`);
+
+  const badService = await api(`/api/admin/service-centers/${CENTER}/services`, {
+    method: 'POST',
+    token: adminToken,
+    body: { customName: '', customCategory: 'ТО', price: 'abc', durationMinutes: 0 }
+  });
+  check('invalid service payload rejected with 400', badService.status === 400, `got ${badService.status}`);
+
+  const deletedService = await api(`/api/admin/services/${adminServiceId}`, { method: 'DELETE', token: adminToken });
+  check('admin deletes a service', deletedService.status === 200 && deletedService.json?.success === true, `got ${deletedService.status}`);
+
+  const configAfterDelete = await api(`/api/admin/service-centers/${CENTER}/config`, { token: adminToken });
+  check(
+    'deleted service is gone from the catalog',
+    Array.isArray(configAfterDelete.json?.services) && configAfterDelete.json.services.length === servicesBefore,
+    `got ${configAfterDelete.json?.services?.length}`
+  );
+
+  const missingServicePatch = await api('/api/admin/services/00000000-0000-0000-0000-000000000000', {
+    method: 'PATCH',
+    token: adminToken,
+    body: { price: 100 }
+  });
+  check('patching an unknown service returns 404', missingServicePatch.status === 404, `got ${missingServicePatch.status}`);
+
   console.log('\n--- TEARDOWN ---');
   await teardown();
 
