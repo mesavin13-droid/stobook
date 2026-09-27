@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { SearchBar, FilterChip, RatingBadge, StatusBadge, Button } from '../design-system';
-import { Bell, MapPin, ChevronRight, Wrench, Sparkles, SlidersHorizontal, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Bell, MapPin, ChevronRight, Wrench, Sparkles, SlidersHorizontal, ArrowRight, ShieldCheck, Phone } from 'lucide-react';
 import { Vehicle, ServiceCenter } from '../../types';
 import { availabilityBadge, formatDistance, formatMinPrice, nextSlotLabel } from './centerMeta';
 import { searchCenters } from './serviceFilters';
@@ -162,6 +162,19 @@ export const ScreenHome: React.FC<ScreenHomeProps> = ({
                     <p className="text-[11px] text-[#70777D] truncate">
                       {match ?? sc.address}
                     </p>
+                    {sc.phone && (
+                      // Телефон — отдельная строка, а не продолжение адреса:
+                      // в строке он обрезается многоточием, и на телефоне его
+                      // просто не прочитать.
+                      <a
+                        href={`tel:${sc.phone.replace(/[^\d+]/g, '')}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-bold text-[#111315] hover:underline"
+                      >
+                        <Phone className="w-3 h-3 text-[#70777D]" />
+                        {sc.phone}
+                      </a>
+                    )}
                   </div>
                   <RatingBadge rating={sc.rating} count={sc.reviews_count} />
                 </button>
@@ -257,6 +270,21 @@ export const ScreenHome: React.FC<ScreenHomeProps> = ({
                           <MapPin className="w-3 h-3 text-[#70777D]" />
                           {formatDistance(sc.distance_km)}
                         </span>
+                      </>
+                    )}
+                    {/* Телефон владельца видно прямо в карточке: запись на
+                        демо-каталоге заведомо не пройдёт, а позвонить реально. */}
+                    {sc.phone && (
+                      <>
+                        <span>·</span>
+                        <a
+                          href={`tel:${sc.phone.replace(/[^\d+]/g, '')}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-0.5 font-semibold text-[#111315] hover:underline"
+                        >
+                          <Phone className="w-3 h-3 text-[#70777D]" />
+                          {sc.phone}
+                        </a>
                       </>
                     )}
                   </div>

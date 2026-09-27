@@ -220,6 +220,18 @@ export const ScreenMap: React.FC<ScreenMapProps> = ({
                       </span>
                     </>
                   )}
+                  {activeCenter.phone && (
+                    <>
+                      <span>·</span>
+                      <a
+                        href={`tel:${activeCenter.phone.replace(/[^\d+]/g, '')}`}
+                        className="flex items-center gap-0.5 font-semibold text-[#111315] hover:underline"
+                      >
+                        <Phone className="w-3 h-3 text-[#70777D]" />
+                        {activeCenter.phone}
+                      </a>
+                    </>
+                  )}
                 </div>
               </div>
 

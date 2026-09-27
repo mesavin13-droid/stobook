@@ -110,6 +110,18 @@ export const ScreenServiceDetail: React.FC<ScreenServiceDetailProps> = ({
                   <span> ({formatDistance(serviceCenter.distance_km)})</span>
                 )}
               </span>
+              {serviceCenter.phone && (
+                <>
+                  <span>·</span>
+                  <a
+                    href={`tel:${serviceCenter.phone.replace(/[^\d+]/g, '')}`}
+                    className="flex items-center gap-1 font-semibold text-[#111315] hover:underline"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-[#70777D]" />
+                    {serviceCenter.phone}
+                  </a>
+                </>
+              )}
               {todayHours && (
                 <>
                   <span>·</span>
