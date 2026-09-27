@@ -162,6 +162,20 @@ export const masterPatchSchema = masterCreateSchema
   .extend({ isActive: z.coerce.boolean().optional() })
   .refine((value) => Object.keys(value).length > 0, 'Нет полей для сохранения');
 
+/**
+ * История автосервиса.
+ *
+ * Загрузки файлов в проекте нет, поэтому фото передаётся ссылкой — так же,
+ * как фото автосервиса. Срок жизни задаётся часами: конкретную дату клиент
+ * не присылает, её считает сервер, иначе можно было бы выставить историю
+ * «на год» одной строкой.
+ */
+export const storyCreateSchema = z.object({
+  mediaUrl: z.string().trim().url('Некорректная ссылка на фото').max(2048),
+  caption: z.string().trim().max(200, 'Подпись слишком длинная').default(''),
+  expiresInHours: z.coerce.number().int().min(1, 'Минимум час').max(168, 'Максимум неделя').default(24)
+});
+
 export const businessHoursSchema = z.object({
   hours: z
     .array(

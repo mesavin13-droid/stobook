@@ -8,6 +8,7 @@
  * Запуск: npm run test:geocoding
  */
 import { geocodeAddress, reverseGeocode, clearGeocodeCache } from '../src/services/geocoding/index.js';
+import { storyCreateSchema } from '../src/validations/index.js';
 
 let passed = 0;
 let failed = 0;
@@ -122,6 +123,36 @@ async function runTests() {
   clearGeocodeCache();
   const outOfRange = await reverseGeocode(10, 10);
   check('точка вне границ России отклоняется', outOfRange === null);
+
+  // --- Валидация истории ------------------------------------------------------
+  console.log('\n--- ВАЛИДАЦИЯ ИСТОРИИ ---');
+  const good = storyCreateSchema.safeParse({ mediaUrl: 'https://example.com/a.jpg', caption: 'Готово', expiresInHours: 24 });
+  check('корректная история принимается', good.success);
+  check(
+    'срок жизни по умолчанию — сутки',
+    storyCreateSchema.safeParse({ mediaUrl: 'https://e.com/a.jpg' }).data?.expiresInHours === 24
+  );
+  check(
+    'подпись по умолчанию пустая',
+    storyCreateSchema.safeParse({ mediaUrl: 'https://e.com/a.jpg' }).data?.caption === ''
+  );
+  check(
+    'подпись в 200 символов принимается',
+    storyCreateSchema.safeParse({ mediaUrl: 'https://e.com/a.jpg', caption: 'x'.repeat(200) }).success
+  );
+  check(
+    'подпись в 201 символ отклоняется',
+    !storyCreateSchema.safeParse({ mediaUrl: 'https://e.com/a.jpg', caption: 'x'.repeat(201) }).success
+  );
+  check('ссылка не на фото отклоняется', !storyCreateSchema.safeParse({ mediaUrl: 'не ссылка' }).success);
+  check(
+    'срок жизни больше недели отклоняется',
+    !storyCreateSchema.safeParse({ mediaUrl: 'https://e.com/a.jpg', expiresInHours: 10000 }).success
+  );
+  check(
+    'нулевой срок жизни отклоняется',
+    !storyCreateSchema.safeParse({ mediaUrl: 'https://e.com/a.jpg', expiresInHours: 0 }).success
+  );
 
   globalThis.fetch = realFetch;
 

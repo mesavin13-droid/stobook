@@ -120,6 +120,33 @@ export interface ServiceCenterService {
   created_at?: string;
 }
 
+export interface ServiceCenterStory {
+  id: string;
+  service_center_id: string;
+  /** Ссылка на фото. Загрузки в проекте нет, поэтому владелец указывает URL — как и с фото автосервиса. */
+  media_url: string;
+  caption: string;
+  created_at: string;
+  /** После этой даты история не показывается клиентам. */
+  expires_at: string;
+  is_active: boolean;
+}
+
+/**
+ * Все истории одного автосервиса вместе с его данными.
+ *
+ * Истории всегда смотрят по автосервису: круглый аватар в ленте открывает
+ * сразу все его карточки, как в Telegram. Поэтому группировка делается в
+ * репозитории одним запросом, а не на клиенте.
+ */
+export interface StoryGroup {
+  serviceCenterId: string;
+  name: string;
+  avatarUrl: string | null;
+  phone: string | null;
+  stories: ServiceCenterStory[];
+}
+
 export interface Master {
   id: string;
   service_center_id: string;

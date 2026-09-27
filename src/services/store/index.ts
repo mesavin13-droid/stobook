@@ -16,6 +16,7 @@ import {
   ServiceBay,
   ServiceCenter,
   ServiceCenterService,
+  ServiceCenterStory,
   ServiceHistoryAccess,
   ServiceHistoryItem,
   SubscriptionPlan,
@@ -67,6 +68,7 @@ class DataStore {
   public vehicles: Vehicle[] = [];
   public vehicleHistorySettings: VehicleHistorySettings[] = [];
   public serviceCenters: ServiceCenter[] = [];
+  public stories: ServiceCenterStory[] = [];
   public services: ServiceCenterService[] = [];
   public bays: ServiceBay[] = [];
   public masters: Master[] = [];
@@ -212,6 +214,50 @@ class DataStore {
     const now = new Date();
     const trialStarted = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
     const trialEnds = new Date(now.getTime() + 12 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Stories demo. The same set ships in 902_stories.sql, so development and
+    // production show the same feed. Expiry is counted from «сейчас», иначе
+    // stories, зашитые в коде на дату публикации, истекли бы через сутки.
+    const storyCreated = (hoursAgo: number) => new Date(now.getTime() - hoursAgo * 60 * 60 * 1000).toISOString();
+    const storyExpires = () => new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    this.stories = [
+      {
+        id: 'a2110000-0000-0000-0000-000000000001',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
+        media_url: 'https://images.unsplash.com/photo-1625047509248-ec889cbff17f?auto=format&fit=crop&w=800&q=80',
+        caption: 'Замена масла и фильтров на Toyota Camry',
+        created_at: storyCreated(2),
+        expires_at: storyExpires(),
+        is_active: true
+      },
+      {
+        id: 'a2110000-0000-0000-0000-000000000002',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
+        media_url: 'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&w=800&q=80',
+        caption: 'Диагностика ходовой части на вибростенде',
+        created_at: storyCreated(5),
+        expires_at: storyExpires(),
+        is_active: true
+      },
+      {
+        id: 'a2110000-0000-0000-0000-000000000003',
+        service_center_id: 'c0010000-0000-0000-0000-000000000001',
+        media_url: 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&w=800&q=80',
+        caption: 'Проверка перед выездом на трассу',
+        created_at: storyCreated(26),
+        expires_at: storyExpires(),
+        is_active: true
+      },
+      {
+        id: 'a2110000-0000-0000-0000-000000000004',
+        service_center_id: 'c0020000-0000-0000-0000-000000000002',
+        media_url: 'https://images.unsplash.com/photo-1597766327619-6a447e9ebdc0?auto=format&fit=crop&w=800&q=80',
+        caption: 'Ремонт тормозной системы: колодки и диски',
+        created_at: storyCreated(3),
+        expires_at: storyExpires(),
+        is_active: true
+      }
+    ];
 
     this.serviceCenters = [
       {

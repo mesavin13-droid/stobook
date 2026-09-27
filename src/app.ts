@@ -40,6 +40,7 @@ import {
   reviewSchema,
   serviceCenterRegisterSchema,
   serviceCenterStatusUpdateSchema,
+  storyCreateSchema,
   vehicleSchema,
   vehicleSettingsSchema
 } from './validations/index.js';
@@ -237,6 +238,15 @@ export function createApp({ repository, env }: AppDependencies): Express {
       }
       const address = await reverseGeocode(latitude, longitude);
       res.json({ address });
+    })
+  );
+
+  // Истории автосервисов. Открытый маршрут: лента stories нужна клиенту
+  // до авторизации, как и каталог.
+  app.get(
+    '/api/stories',
+    wrap(async (_req, res) => {
+      res.json({ groups: await repository.listActiveStoryGroups() });
     })
   );
 
@@ -1134,6 +1144,57 @@ export function createApp({ repository, env }: AppDependencies): Express {
         parse.data.hours
       );
       res.json({ success: true, businessHours });
+    })
+  );
+
+  // Истории автосервиса. Центр, как и у услуг, берётся из сессии, а не из
+  // тела запроса: иначе владелец опубликовал бы историю чужому автосервису.
+  app.post(
+    '/api/owner/stories',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const parse = storyCreateSchema.safeParse(req.body);
+      if (!parse.success) {
+        res.status(400).json({ error: parse.error.issues[0]?.message || 'Ошибка данных истории' });
+        return;
+      }
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      const story = await repository.createStory(getRequestAuth(req).profile.id, {
+        serviceCenterId: center.id,
+        mediaUrl: parse.data.mediaUrl,
+        caption: parse.data.caption,
+        expiresInHours: parse.data.expiresInHours
+      });
+      res.status(201).json({ success: true, story });
+    })
+  );
+
+  app.get(
+    '/api/owner/stories',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      res.json({ center, stories: await repository.listStoriesByServiceCenter(center.id) });
+    })
+  );
+
+  app.delete(
+    '/api/owner/stories/:id',
+    requireAuth,
+    requireRole('SERVICE_OWNER', 'SERVICE_ADMIN', 'SUPER_ADMIN'),
+    wrap(async (req, res) => {
+      const center = await resolveOwnedCenter(req, res);
+      if (!center) return;
+      if (!(await isOwnCenterRow('service_center_stories', req.params.id, center.id))) {
+        res.status(404).json({ error: 'История не найдена' });
+        return;
+      }
+      const deleted = await repository.deleteStory(getRequestAuth(req).profile.id, req.params.id);
+      res.json({ success: deleted });
     })
   );
 

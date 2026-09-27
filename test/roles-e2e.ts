@@ -409,6 +409,75 @@ async function main() {
       );
     }
 
+    // --- Истории автосервисов -------------------------------------------------
+    console.log('\n--- ИСТОРИИ АВТОСЕРВИСОВ ---');
+    const anonStories = await api('/api/stories');
+    check('истории видны анониму', anonStories.status === 200, `статус ${anonStories.status}`);
+    check('истории приходят группами по автосервисам', Array.isArray(anonStories.json?.groups));
+
+    const beforeCount = (anonStories.json?.groups || []).length;
+    check('в ленте есть истории сид-автосервисов', beforeCount > 0, `групп: ${beforeCount}`);
+
+    const customerTriesCreate = await api('/api/owner/stories', {
+      method: 'POST',
+      token: customer.token,
+      body: { mediaUrl: 'https://example.com/photo.jpg', caption: 'Попытка клиента', expiresInHours: 24 }
+    });
+    check('клиент не может публиковать истории', customerTriesCreate.status === 403, `статус ${customerTriesCreate.status}`);
+
+    const badUrl = await api('/api/owner/stories', {
+      method: 'POST',
+      token: owner.token,
+      body: { mediaUrl: 'не ссылка', caption: 'Кривая ссылка', expiresInHours: 24 }
+    });
+    check('кривая ссылка на фото отклоняется', badUrl.status === 400, `статус ${badUrl.status}`);
+
+    const tooLong = await api('/api/owner/stories', {
+      method: 'POST',
+      token: owner.token,
+      body: {
+        mediaUrl: 'https://example.com/photo.jpg',
+        caption: 'x'.repeat(201),
+        expiresInHours: 24
+      }
+    });
+    check('слишком длинная подпись отклоняется', tooLong.status === 400, `статус ${tooLong.status}`);
+
+    const createdStory = await api('/api/owner/stories', {
+      method: 'POST',
+      token: owner.token,
+      body: {
+        mediaUrl: 'https://example.com/story.jpg',
+        caption: 'Замена масла на E2E',
+        expiresInHours: 24
+      }
+    });
+    check('владелец опубликовал историю', createdStory.status === 201, `статус ${createdStory.status}: ${JSON.stringify(createdStory.json)}`);
+    const story = createdStory.json?.story;
+    check('история привязана к своему автосервису', story?.service_center_id === center?.id, String(story?.service_center_id));
+    check('у истории есть срок жизни', typeof story?.expires_at === 'string' && story.expires_at !== '');
+
+    const afterCreate = await api('/api/stories');
+    const afterGroups = afterCreate.json?.groups || [];
+    check('новая история появилась в публичной ленте', afterGroups.some(
+      (group: any) => group.serviceCenterId === center?.id && group.stories.some((item: any) => item.id === story?.id)
+    ));
+    check('в группе автосервиса стало больше историй', afterGroups.length >= beforeCount);
+
+    const ownList = await api('/api/owner/stories', { token: owner.token });
+    check('владелец видит свои истории в кабинете', (ownList.json?.stories || []).some((item: any) => item.id === story?.id));
+
+    const deleted = await api(`/api/owner/stories/${story?.id}`, { method: 'DELETE', token: owner.token });
+    check('владелец удалил историю', deleted.status === 200, `статус ${deleted.status}`);
+
+    const afterDelete = await api('/api/stories');
+    check(
+      'удалённая история исчезла из ленты',
+      !(afterDelete.json?.groups || []).some((group: any) =>
+        group.stories.some((item: any) => item.id === story?.id)
+      )
+    );
+
     // --- Владелец: мастера остаются ресурсом загрузки ----------------------
     console.log('\n--- ВЛАДЕЛЕЦ: МАСТЕРА ОСТАЮТСЯ РЕСУРСОМ ---');
     const finalCabinet = await api('/api/owner/service-center', { token: owner.token });

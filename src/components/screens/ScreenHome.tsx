@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { SearchBar, FilterChip, RatingBadge, StatusBadge, Button } from '../design-system';
 import { Bell, MapPin, ChevronRight, Wrench, Sparkles, SlidersHorizontal, ArrowRight, ShieldCheck, Phone } from 'lucide-react';
-import { Vehicle, ServiceCenter } from '../../types';
+import { Vehicle, ServiceCenter, StoryGroup } from '../../types';
 import { availabilityBadge, formatDistance, formatMinPrice, nextSlotLabel } from './centerMeta';
 import { searchCenters } from './serviceFilters';
+import { StoriesRow } from './StoriesRow';
 
 export interface ScreenHomeProps {
   vehicle: Vehicle | null;
@@ -14,6 +15,8 @@ export interface ScreenHomeProps {
   onChangeVehicle: () => void;
   onOpenNotifications: () => void;
   onOpenMap: () => void;
+  onOpenStories: (groupIndex: number) => void;
+  onStoriesLoaded: (groups: StoryGroup[]) => void;
 }
 
 const POPULAR_SERVICES = [
@@ -33,7 +36,9 @@ export const ScreenHome: React.FC<ScreenHomeProps> = ({
   onStartBooking,
   onChangeVehicle,
   onOpenNotifications,
-  onOpenMap
+  onOpenMap,
+  onOpenStories,
+  onStoriesLoaded
 }) => {
   // Раньше поле поиска было заглушкой: value="" и пустой onChange, поэтому
   // ввод не сохранялся и подсказки не появлялись. Теперь запрос живой.
@@ -218,6 +223,12 @@ export const ScreenHome: React.FC<ScreenHomeProps> = ({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Лента историй автосервисов. Компонент сам ничего не рисует, если
+          историй нет, поэтому пустой блок не занимает место на экране. */}
+      <div className="mt-4 -mx-4">
+        <StoriesRow onGroupsLoaded={onStoriesLoaded} onOpen={onOpenStories} />
       </div>
 
       {/* "СТО рядом" Cards List */}

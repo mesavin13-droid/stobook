@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { Profile, Vehicle, ServiceCenter } from './types';
+import { Profile, Vehicle, ServiceCenter, StoryGroup } from './types';
 import { Navigation } from './components/Navigation';
 import { Button } from './components/design-system';
 
@@ -10,6 +10,7 @@ import { ScreenLegal } from './components/screens/ScreenLegal';
 import { DEFAULT_LEGAL_DOC, type LegalDocId } from './legal';
 import { ScreenAddCar } from './components/screens/ScreenAddCar';
 import { ScreenHome } from './components/screens/ScreenHome';
+import { ScreenStories } from './components/screens/ScreenStories';
 import { ScreenProblemSearch } from './components/screens/ScreenProblemSearch';
 import { ScreenMarketplaceResults } from './components/screens/ScreenMarketplaceResults';
 import { ScreenMap } from './components/screens/ScreenMap';
@@ -48,6 +49,7 @@ export type ScreenId =
   | 'owner_manage'
   | 'owner_register'
   | 'legal'
+  | 'stories'
   | 'admin_dashboard';
 
 export default function App() {
@@ -68,6 +70,11 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   // Какой юридический документ открыт на экране «Правовая информация».
   const [legalDoc, setLegalDoc] = useState<LegalDocId>(DEFAULT_LEGAL_DOC);
+  // Истории грузит лента на главной, а просмотрщику нужен готовый список и
+  // индекс группы, с которой открыли. Держать его в App удобнее, чем грузить
+  // заново при каждом открытии: лента уже всё получила.
+  const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
+  const [storyGroupIndex, setStoryGroupIndex] = useState(0);
 
   const openLegal = (doc: LegalDocId = DEFAULT_LEGAL_DOC) => {
     setLegalDoc(doc);
@@ -330,6 +337,11 @@ export default function App() {
             }}
             onOpenNotifications={() => setCurrentScreen('bookings')}
             onOpenMap={() => setCurrentScreen('map')}
+            onOpenStories={(groupIndex) => {
+              setStoryGroupIndex(groupIndex);
+              setCurrentScreen('stories');
+            }}
+            onStoriesLoaded={setStoryGroups}
           />
         );
 
@@ -376,6 +388,26 @@ export default function App() {
               setCurrentScreen('service_select');
             }}
             onSwitchToList={() => setCurrentScreen('marketplace')}
+          />
+        );
+
+      case 'stories':
+        return (
+          <ScreenStories
+            groups={storyGroups}
+            startGroupIndex={storyGroupIndex}
+            onClose={() => setCurrentScreen('home')}
+            onOpenCenter={(serviceCenterId) => {
+              // Из истории клиент должен попасть на карточку автосервиса, а не
+              // в пустоту: ищем центр в уже загруженной выдаче.
+              const center = serviceCenters.find((item) => item.id === serviceCenterId);
+              if (center) {
+                setSelectedCenter(center);
+                setCurrentScreen('service_detail');
+                return;
+              }
+              setCurrentScreen('home');
+            }}
           />
         );
 

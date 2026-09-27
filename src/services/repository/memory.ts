@@ -12,8 +12,10 @@ import type {
   ServiceCenter,
   ServiceCenterService,
   ServiceCenterStatus,
+  ServiceCenterStory,
   ServiceHistoryAccess,
   ServiceHistoryItem,
+  StoryGroup,
   SubscriptionPlan,
   TelegramAccount,
   UserRole,
@@ -42,6 +44,7 @@ import type {
   CompleteServiceParams,
   CreateBayInput,
   CreateCenterServiceInput,
+  CreateStoryInput,
   CreateMasterInput,
   HistorySettingsPatch,
   GrantPromotionInput,
@@ -171,6 +174,66 @@ export class MemoryRepository implements Repository {
     );
   }
 
+  async listActiveStoryGroups(): Promise<StoryGroup[]> {
+    const now = Date.now();
+    const groups = new Map<string, StoryGroup>();
+
+    // Сначала центры с живыми историями, потом сами истории: в памяти это два
+    // прохода по массиву, зато порядок групп и историй внутри них совпадает с
+    // тем, что отдаёт Postgres (сначала новые истории).
+    const centers = new Map<string, ServiceCenter>();
+    for (const center of store.serviceCenters) centers.set(center.id, center);
+
+    const visible = store.stories
+      .filter((story) => story.is_active && new Date(story.expires_at).getTime() > now)
+      .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+
+    for (const story of visible) {
+      let group = groups.get(story.service_center_id);
+      if (!group) {
+        const center = centers.get(story.service_center_id);
+        group = {
+          serviceCenterId: story.service_center_id,
+          name: center?.name ?? 'Автосервис',
+          avatarUrl: center?.photos?.[0] ?? null,
+          phone: center?.phone ?? null,
+          stories: []
+        };
+        groups.set(story.service_center_id, group);
+      }
+      group.stories.push(story);
+    }
+    return [...groups.values()];
+  }
+
+  async listStoriesByServiceCenter(serviceCenterId: string): Promise<ServiceCenterStory[]> {
+    return store.stories
+      .filter((story) => story.service_center_id === serviceCenterId)
+      .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+  }
+
+  async createStory(actorId: string, input: CreateStoryInput): Promise<ServiceCenterStory> {
+    const now = Date.now();
+    const story: ServiceCenterStory = {
+      id: randomUUID(),
+      service_center_id: input.serviceCenterId,
+      media_url: input.mediaUrl,
+      caption: input.caption,
+      created_at: new Date(now).toISOString(),
+      expires_at: new Date(now + input.expiresInHours * 60 * 60 * 1000).toISOString(),
+      is_active: true
+    };
+    store.stories.push(story);
+    return story;
+  }
+
+  async deleteStory(actorId: string, id: string): Promise<boolean> {
+    const index = store.stories.findIndex((story) => story.id === id);
+    if (index === -1) return false;
+    store.stories.splice(index, 1);
+    return true;
+  }
+
   async listBays(serviceCenterId: string): Promise<ServiceBay[]> {
     return store.bays.filter((bay) => bay.service_center_id === serviceCenterId);
   }
@@ -279,9 +342,15 @@ export class MemoryRepository implements Repository {
   }
 
   async getRowServiceCenterId(table: OwnerScopedTable, id: string): Promise<string | null> {
-    const rows =
-      table === 'service_center_services' ? store.services : table === 'service_bays' ? store.bays : store.masters;
-    return rows.find((row) => row.id === id)?.service_center_id ?? null;
+    // Раньше здесь был тернарник с «иначе masters», и новая таблица историй
+    // молча уходила в поиск по мастерам: удаление истории отдавало 404.
+    const rows = {
+      service_center_services: store.services,
+      service_bays: store.bays,
+      masters: store.masters,
+      service_center_stories: store.stories
+    }[table];
+    return rows?.find((row) => row.id === id)?.service_center_id ?? null;
   }
 
   async updateServiceCenterProfile(

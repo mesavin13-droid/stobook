@@ -16,8 +16,10 @@ import type {
   ServiceCenter,
   ServiceCenterService,
   ServiceCenterStatus,
+  ServiceCenterStory,
   ServiceHistoryAccess,
   ServiceHistoryItem,
+  StoryGroup,
   SubscriptionPlan,
   TelegramAccount,
   Vehicle,
@@ -44,6 +46,7 @@ import {
   type CompleteServiceParams,
   type CreateBayInput,
   type CreateCenterServiceInput,
+  type CreateStoryInput,
   type CreateMasterInput,
   type HistorySettingsPatch,
   type GrantPromotionInput,
@@ -71,7 +74,12 @@ import {
 const PG_TYPE_DATE = 1082;
 const PG_TYPE_NUMERIC = 1700;
 const REMINDER_CLAIM_LIMIT = 200;
-const OWNER_SCOPED_TABLES = new Set<string>(['service_center_services', 'service_bays', 'masters']);
+const OWNER_SCOPED_TABLES = new Set<string>([
+  'service_center_services',
+  'service_bays',
+  'masters',
+  'service_center_stories'
+]);
 
 types.setTypeParser(PG_TYPE_DATE, (value) => value);
 types.setTypeParser(PG_TYPE_NUMERIC, (value) => (value === null ? null : Number.parseFloat(value)));
@@ -189,6 +197,18 @@ function mapCenterService(row: any): ServiceCenterService {
     duration_minutes: toNumber(row.duration_minutes, 60),
     is_active: toBoolean(row.is_active),
     created_at: toIso(row.created_at)
+  };
+}
+
+function mapStory(row: any): ServiceCenterStory {
+  return {
+    id: row.id,
+    service_center_id: row.service_center_id,
+    media_url: row.media_url,
+    caption: row.caption ?? '',
+    created_at: toIsoRequired(row.created_at),
+    expires_at: toIsoRequired(row.expires_at),
+    is_active: toBoolean(row.is_active)
   };
 }
 
@@ -617,6 +637,77 @@ export class PostgresRepository implements Repository {
       [serviceCenterId]
     );
     return rows.map(mapCenterService);
+  }
+
+  /**
+   * Живые истории, сгруппированные по автосервису.
+   *
+   * Аватар автосервиса берём из его фото: отдельной картинки профиля у
+   * автосервиса нет, а круглые аватары в ленте нужны всегда — иначе на
+   * первом автосервисе без фото история не показалась бы вовсе.
+   */
+  async listActiveStoryGroups(): Promise<StoryGroup[]> {
+    const { rows } = await this.pool.query(
+      `SELECT s.id, s.service_center_id, s.media_url, s.caption, s.created_at, s.expires_at, s.is_active,
+              sc.name AS center_name,
+              (
+                SELECT p.url
+                  FROM service_center_photos p
+                 WHERE p.service_center_id = sc.id
+                 ORDER BY p.sort_order, p.id
+                 LIMIT 1
+              ) AS avatar_url,
+              sc.phone AS center_phone
+         FROM service_center_stories s
+         JOIN service_centers sc ON sc.id = s.service_center_id
+        WHERE s.is_active AND s.expires_at > NOW()
+        ORDER BY s.service_center_id, s.created_at DESC`
+    );
+
+    const groups = new Map<string, StoryGroup>();
+    for (const row of rows) {
+      const centerId: string = row.service_center_id;
+      let group = groups.get(centerId);
+      if (!group) {
+        group = {
+          serviceCenterId: centerId,
+          name: row.center_name,
+          avatarUrl: row.avatar_url ?? null,
+          phone: row.center_phone ?? null,
+          stories: []
+        };
+        groups.set(centerId, group);
+      }
+      group.stories.push(mapStory(row));
+    }
+    return [...groups.values()];
+  }
+
+  async listStoriesByServiceCenter(serviceCenterId: string): Promise<ServiceCenterStory[]> {
+    const { rows } = await this.pool.query(
+      'SELECT * FROM service_center_stories WHERE service_center_id = $1 ORDER BY created_at DESC',
+      [serviceCenterId]
+    );
+    return rows.map(mapStory);
+  }
+
+  async createStory(actorId: string, input: CreateStoryInput): Promise<ServiceCenterStory> {
+    return this.run(actorId, true, async (client) => {
+      const { rows } = await client.query(
+        `INSERT INTO service_center_stories (service_center_id, media_url, caption, expires_at, is_active)
+         VALUES ($1, $2, $3, NOW() + ($4 || ' hours')::INTERVAL, TRUE)
+         RETURNING *`,
+        [input.serviceCenterId, input.mediaUrl, input.caption, String(input.expiresInHours)]
+      );
+      return mapStory(rows[0]);
+    });
+  }
+
+  async deleteStory(actorId: string, id: string): Promise<boolean> {
+    return this.run(actorId, true, async (client) => {
+      const { rowCount } = await client.query('DELETE FROM service_center_stories WHERE id = $1', [id]);
+      return Boolean(rowCount);
+    });
   }
 
   async listBays(serviceCenterId: string): Promise<ServiceBay[]> {

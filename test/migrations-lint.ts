@@ -33,6 +33,16 @@ function lineOf(sql: string, index: number): number {
   return sql.slice(0, index).split('\n').length;
 }
 
+/**
+ * Убирает тела функций в долларовых кавычках (`$$ ... $$`).
+ *
+ * Внутри них точки с запятой разделяют строки PL/pgSQL, а не SQL-выражения,
+ * поэтому без этого каждая строка тела выглядит как «выражение не с SQL-ключа».
+ */
+function stripDollarQuoted(sql: string): string {
+  return sql.replace(/\$([a-z_]*)\$[\s\S]*?\$\1\$/gi, ' DOLLAR_BODY ');
+}
+
 /** Убирает комментарии, а строковые литералы заменяет на пустые скобки. */
 function strip(sql: string, file: string): string {
   let out = '';
@@ -98,7 +108,7 @@ function main() {
   for (const name of files) {
     const before = problems;
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8');
-    const text = strip(sql, name);
+    const text = strip(stripDollarQuoted(sql), name);
 
     let depth = 0;
     for (let i = 0; i < text.length; i += 1) {

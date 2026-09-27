@@ -14,8 +14,10 @@ import type {
   ServiceCenter,
   ServiceCenterService,
   ServiceCenterStatus,
+  ServiceCenterStory,
   ServiceHistoryAccess,
   ServiceHistoryItem,
+  StoryGroup,
   SubscriptionPlan,
   TelegramAccount,
   UserRole,
@@ -171,7 +173,15 @@ export interface RegisterServiceCenterInput {
  * Owner owned child rows. The union is a whitelist: the postgres implementation
  * refuses any other table name, so a caller cannot reach arbitrary SQL.
  */
-export type OwnerScopedTable = 'service_center_services' | 'service_bays' | 'masters';
+export type OwnerScopedTable = 'service_center_services' | 'service_bays' | 'masters' | 'service_center_stories';
+
+export interface CreateStoryInput {
+  serviceCenterId: string;
+  mediaUrl: string;
+  caption: string;
+  /** Срок жизни в часах. Считается на сервере: клиент присылает только число. */
+  expiresInHours: number;
+}
 
 export interface CreateCenterServiceInput {
   serviceCenterId: string;
@@ -269,6 +279,8 @@ export interface Repository {
   listBusinessHours(serviceCenterId: string): Promise<BusinessHours[]>;
   listReviews(serviceCenterId: string): Promise<Review[]>;
   listApprovedReviews(serviceCenterId?: string): Promise<Review[]>;
+  /** Живые и не истёкшие истории, сгруппированные по автосервису. */
+  listActiveStoryGroups(): Promise<StoryGroup[]>;
   getServiceCenterCounts(): Promise<ServiceCenterCounts>;
   updateServiceCenterStatus(id: string, status: ServiceCenterStatus): Promise<ServiceCenter | null>;
   registerServiceCenter(input: RegisterServiceCenterInput): Promise<ServiceCenter>;
@@ -289,6 +301,10 @@ export interface Repository {
   updateMaster(actorId: string, id: string, patch: MasterPatch): Promise<Master | null>;
   deleteMaster(actorId: string, id: string): Promise<boolean>;
   replaceBusinessHours(actorId: string, serviceCenterId: string, entries: BusinessHoursEntry[]): Promise<BusinessHours[]>;
+  /** Истории конкретного автосервиса, включая истёкшие и выключенные. */
+  listStoriesByServiceCenter(serviceCenterId: string): Promise<ServiceCenterStory[]>;
+  createStory(actorId: string, input: CreateStoryInput): Promise<ServiceCenterStory>;
+  deleteStory(actorId: string, id: string): Promise<boolean>;
 
   getAvailabilityForService(serviceCenterId: string, serviceCenterServiceId: string, dateStr: string): Promise<AvailableSlot[]>;
 

@@ -1,16 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Input, EmptyState } from '../design-system';
-import { ArrowLeft, Plus, Trash2, Pencil, Check, X, Wrench, Users, CalendarClock, Warehouse, Store } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Pencil, Check, X, Wrench, Users, CalendarClock, Warehouse, Store, Images } from 'lucide-react';
 import { SERVICE_PRESETS, isPresetAlreadyAdded } from './serviceFilters';
 import { AddressPicker } from './AddressPicker';
+import { StoriesTab } from './OwnerStoriesTab';
+import { Card, Row } from './ownerLayout';
+import type { ServiceCenterStory } from '../../types';
 
-type Tab = 'services' | 'bays' | 'masters' | 'hours' | 'about';
+type Tab = 'services' | 'bays' | 'masters' | 'hours' | 'stories' | 'about';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'services', label: 'Услуги', icon: <Wrench className="w-4 h-4" /> },
   { id: 'bays', label: 'Посты', icon: <Warehouse className="w-4 h-4" /> },
   { id: 'masters', label: 'Мастера', icon: <Users className="w-4 h-4" /> },
   { id: 'hours', label: 'Часы работы', icon: <CalendarClock className="w-4 h-4" /> },
+  { id: 'stories', label: 'Истории', icon: <Images className="w-4 h-4" /> },
   { id: 'about', label: 'О сервисе', icon: <Store className="w-4 h-4" /> }
 ];
 
@@ -100,6 +104,9 @@ export const ScreenOwnerManage: React.FC<ScreenOwnerManageProps> = ({ onBack }) 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Истории живут отдельным маршрутом: основной payload кабинета их не
+  // возвращает, а тянуть их при каждом открытии кабинета смысла нет.
+  const [stories, setStories] = useState<ServiceCenterStory[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,6 +123,14 @@ export const ScreenOwnerManage: React.FC<ScreenOwnerManageProps> = ({ onBack }) 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Грузим истории один раз: список нужен только вкладке «Истории», а лишний
+  // запрос на каждый экран кабинета делать незачем.
+  useEffect(() => {
+    request<{ stories: ServiceCenterStory[] }>('/api/owner/stories')
+      .then((payload) => setStories(payload.stories || []))
+      .catch(() => {});
+  }, []);
 
   const flash = (message: string) => {
     setNotice(message);
@@ -270,6 +285,34 @@ export const ScreenOwnerManage: React.FC<ScreenOwnerManageProps> = ({ onBack }) 
           />
         )}
 
+        {tab === 'stories' && (
+          <StoriesTab
+            stories={stories}
+            saving={saving}
+            onCreate={(payload) =>
+              mutate(
+                async () => {
+                  const created = await request<{ story: ServiceCenterStory }>('/api/owner/stories', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                  });
+                  setStories((current) => [created.story, ...current]);
+                },
+                'История опубликована'
+              )
+            }
+            onDelete={(id) =>
+              mutate(
+                async () => {
+                  await request(`/api/owner/stories/${id}`, { method: 'DELETE' });
+                  setStories((current) => current.filter((item) => item.id !== id));
+                },
+                'История удалена'
+              )
+            }
+          />
+        )}
+
         {tab === 'about' && (
           <AboutTab
             center={data.center}
@@ -293,12 +336,6 @@ interface TabActions {
   onUpdate: (id: string, payload: Record<string, unknown>) => void;
   onDelete: (id: string) => void;
 }
-
-const Card = ({ children }: { children: React.ReactNode }) => (
-  <div className="bg-white rounded-[18px] border border-[#E1E4E6] p-4 space-y-3">{children}</div>
-);
-
-const Row = ({ children }: { children: React.ReactNode }) => <div className="flex items-center gap-2">{children}</div>;
 
 const ServicesTab: React.FC<TabActions & { services: OwnerService[] }> = ({
   services,
