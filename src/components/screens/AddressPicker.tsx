@@ -45,6 +45,7 @@ export const AddressPicker: React.FC<AddressPickerProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isMapOpen, setIsMapOpen] = useState(false);
+  const [reverseHint, setReverseHint] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -112,19 +113,29 @@ export const AddressPicker: React.FC<AddressPickerProps> = ({
     setIsMapOpen(true);
   };
 
-  /** Метка поставлена вручную: уточняем адрес обратным геокодированием. */
+  /**
+   * Метка поставлена вручную: уточняем, что попало в точку.
+   *
+   * Обратное геокодирование часто отдаёт не адрес, а название объекта
+   * («Уголок Святого Патрика»), поэтому результат показываем подсказкой, а не
+   * подставляем молча — иначе можно стереть адрес, который владелец уже
+   * аккуратно набрал. В пустое поле подставляем сами.
+   */
   const resolveManualPoint = async (point: { latitude: number; longitude: number }) => {
     onPointChange(point);
+    setReverseHint(null);
     try {
       const res = await fetch(`/api/geocode/reverse?lat=${point.latitude}&lng=${point.longitude}`);
       if (!res.ok) return;
       const payload = await res.json();
-      if (typeof payload?.address === 'string' && payload.address.trim()) {
-        onAddressChange(payload.address.trim());
-      }
+      const resolved = typeof payload?.address === 'string' ? payload.address.trim() : '';
+      if (!resolved) return;
+      setReverseHint(resolved);
+      if (address.trim().length === 0) onAddressChange(resolved);
     } catch {
-      // Адрес владелец поправит руками: сеть или геокодер могут лежать.
-
+      // Сеть или геокодер могут лежать: адрес владелец поправит руками.
+    }
+  };
   return (
     <div className="space-y-2.5">
       <Input
@@ -194,11 +205,19 @@ export const AddressPicker: React.FC<AddressPickerProps> = ({
             longitude={longitude ?? 0}
             onChange={(point) => void resolveManualPoint(point)}
           />
+          {reverseHint && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onAddressChange(reverseHint)}
+              className="mt-2 w-full text-left px-3 py-2 rounded-[12px] bg-[#F6F7F8] text-[11px] font-semibold text-[#70777D] hover:text-[#111315] disabled:opacity-50"
+            >
+              По этой точке: {reverseHint}
+            </button>
+          )}
         </div>
       )}
     </div>
   );
 };
 
-    }
-  };
